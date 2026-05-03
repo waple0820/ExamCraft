@@ -31,21 +31,23 @@ Return a JSON object with these keys:
 
 Reply with ONLY the JSON object."""
 
-BANK_AGGREGATION_SYSTEM = """You are aggregating per-page analyses of multiple sample exam papers into a single bank-level profile that downstream code will use to GENERATE new exams in the same style and topic distribution. Be specific and practical, not vague."""
+BANK_AGGREGATION_SYSTEM = """You are aggregating per-page analyses of multiple sample exam papers into a single bank-level profile that downstream code will use to GENERATE new exams in the same style and topic distribution. Be specific and practical, not vague.
+
+Write all human-facing text fields (style_profile values, problem_type_distribution KEYS, difficulty_curve, summary) in the SAME language as the source samples — if the samples are Chinese exam papers, the output text MUST be Chinese. Keep the JSON object's structural keys (style_profile, header_template, layout_pattern, typography, tone, knowledge_point_distribution, problem_type_distribution, difficulty_curve, typical_page_count, summary) verbatim in English so callers can index them; only the values and the inner-distribution map keys (topic names, problem-type names) follow the source language."""
 
 BANK_AGGREGATION_PROMPT = """Below is a list of per-page analyses, grouped by source file. Produce a single JSON object with these keys:
 
   "style_profile": {{
-      "header_template": short description of the header style to reproduce,
-      "layout_pattern": short description of overall page layout,
-      "typography": short description of typography conventions,
-      "tone": one short sentence on overall feel ("formal regional mock-exam", "friendly school worksheet", etc)
+      "header_template": <short description of the header / banner style — in source language>,
+      "layout_pattern":  <short description of overall page layout — in source language>,
+      "typography":      <short description of typography conventions — in source language>,
+      "tone":            <one short sentence on overall feel — in source language>
   }},
-  "knowledge_point_distribution": object mapping Chinese topic name -> rough weight (number summing to 1.0),
-  "problem_type_distribution": object mapping type -> rough weight (sum to 1.0),
-  "difficulty_curve": short string describing difficulty progression across the exam,
+  "knowledge_point_distribution": object mapping topic-name (in source language, e.g. Chinese) -> rough weight summing to ~1.0,
+  "problem_type_distribution": object mapping problem-type-name (in source language, e.g. "选择题","填空题","解答题","几何证明") -> rough weight summing to ~1.0. Do NOT use English snake_case keys like "multiple_choice" when the samples are Chinese,
+  "difficulty_curve": short sentence describing difficulty progression — in source language,
   "typical_page_count": integer (median across samples),
-  "summary": one paragraph summarizing what a generated exam in this bank should look like.
+  "summary": one paragraph summarizing what a generated exam in this bank should look like — in source language.
 
 Source analyses:
 {analyses}

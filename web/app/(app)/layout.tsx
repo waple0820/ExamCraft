@@ -19,12 +19,9 @@ export default async function AppLayout({
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-ink/5 bg-ivory/85 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-baseline gap-3">
+          <Link href="/" className="flex items-baseline">
             <span className="font-display text-xl tracking-tight">
               {m.brand.name}
-            </span>
-            <span className="text-xs uppercase tracking-[0.18em] text-ink/40">
-              {m.brand.tagline}
             </span>
           </Link>
           <div className="flex items-center gap-4">

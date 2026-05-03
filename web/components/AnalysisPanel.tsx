@@ -185,14 +185,14 @@ function AnalysisRender({ analysis }: { analysis: Record<string, unknown> }) {
 
       {problems ? (
         <Section title={m.analysis.problemTypes}>
-          <DistBars dist={problems} />
+          <DistBars dist={problems} labelMap={m.analysis.problemTypeLabels} />
         </Section>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {style ? (
           <Section title={m.analysis.styleProfile}>
-            <KvList obj={style} />
+            <KvList obj={style} labelMap={m.analysis.styleProfileLabels} />
           </Section>
         ) : null}
         <Section title={m.analysis.shape}>
@@ -204,15 +204,6 @@ function AnalysisRender({ analysis }: { analysis: Record<string, unknown> }) {
           </ul>
         </Section>
       </div>
-
-      <details className="rounded-xl border border-ink/10 bg-white/40 p-3 text-xs">
-        <summary className="cursor-pointer text-ink/55">
-          {m.analysis.rawJson}
-        </summary>
-        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] text-ink/65">
-          {JSON.stringify(analysis, null, 2)}
-        </pre>
-      </details>
     </div>
   );
 }
@@ -232,13 +223,20 @@ function Section({
   );
 }
 
-function DistBars({ dist }: { dist: Record<string, number> }) {
+function DistBars({
+  dist,
+  labelMap,
+}: {
+  dist: Record<string, number>;
+  labelMap?: Record<string, string>;
+}) {
   const entries = Object.entries(dist).sort(([, a], [, b]) => Number(b) - Number(a));
   const max = Math.max(...entries.map(([, v]) => Number(v) || 0), 0.01);
   return (
     <ul className="space-y-1.5">
       {entries.map(([k, v]) => {
         const pct = (Number(v) || 0) / max;
+        const label = labelMap?.[k] ?? k;
         return (
           <li
             key={k}
@@ -246,7 +244,7 @@ function DistBars({ dist }: { dist: Record<string, number> }) {
           >
             <div>
               <div className="flex items-baseline justify-between">
-                <span className="text-ink/80">{k}</span>
+                <span className="text-ink/80">{label}</span>
                 <span className="text-xs tabular-nums text-ink/40">
                   {(Number(v) * 100).toFixed(0)}%
                 </span>
@@ -265,17 +263,28 @@ function DistBars({ dist }: { dist: Record<string, number> }) {
   );
 }
 
-function KvList({ obj }: { obj: Record<string, unknown> }) {
+function KvList({
+  obj,
+  labelMap,
+}: {
+  obj: Record<string, unknown>;
+  labelMap?: Record<string, string>;
+}) {
   return (
     <dl className="space-y-2 text-sm">
-      {Object.entries(obj).map(([k, v]) => (
-        <div key={k}>
-          <dt className="text-xs uppercase tracking-wider text-ink/40">{k}</dt>
-          <dd className="text-ink/80">
-            {typeof v === "string" ? v : JSON.stringify(v)}
-          </dd>
-        </div>
-      ))}
+      {Object.entries(obj).map(([k, v]) => {
+        const label = labelMap?.[k] ?? k.replace(/_/g, " ");
+        return (
+          <div key={k}>
+            <dt className="text-xs uppercase tracking-wider text-ink/40">
+              {label}
+            </dt>
+            <dd className="text-ink/80">
+              {typeof v === "string" ? v : JSON.stringify(v)}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }

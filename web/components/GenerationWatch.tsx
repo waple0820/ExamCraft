@@ -10,12 +10,6 @@ import { PageGallery } from "@/components/PageGallery";
 import { ReviseChat } from "@/components/ReviseChat";
 import { SpecViewer } from "@/components/SpecViewer";
 
-type LogEntry = {
-  ts: string;
-  message: string;
-  tone: "info" | "ok" | "err";
-};
-
 export function GenerationWatch({
   initial,
   initialChat,
@@ -26,44 +20,21 @@ export function GenerationWatch({
   const router = useRouter();
   const { messages: m, locale } = useI18n();
   const [job, setJob] = useState<Generation>(initial);
-  const [log, setLog] = useState<LogEntry[]>([]);
   const [chat, setChat] = useState<ChatMessage[]>(initialChat);
 
-  // Subscribe to SSE while the job is in flight.
+  // Subscribe to SSE while the job is in flight. We deliberately do NOT
+  // expose internal step events to the user — the progress bar, page
+  // gallery and spec viewer give plenty of visible feedback without
+  // leaking generation-pipeline internals.
   useEffect(() => {
     if (job.status === "done" || job.status === "failed") return;
     const url = backendUrl(`/api/generations/${job.id}/events`);
     const es = new EventSource(url, { withCredentials: true });
 
-    const append = (message: string, tone: LogEntry["tone"] = "info") => {
-      setLog((prev) => [
-        ...prev,
-        { ts: new Date().toLocaleTimeString(), message, tone },
-      ]);
-    };
-
-    const stepLabels: Record<string, string> = {
-      spec: m.generation.stepSpec,
-      layout: m.generation.stepLayout,
-      render: m.generation.stepRender,
-      revise: m.generation.stepRevise,
-    };
-
-    es.addEventListener("step", (ev) => {
-      try {
-        const data = JSON.parse((ev as MessageEvent).data);
-        const label = stepLabels[data.step] ?? data.step;
-        append(label);
-      } catch {
-        /* ignore */
-      }
-    });
-
     es.addEventListener("spec_ready", (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent).data);
         setJob((j) => ({ ...j, spec: data.spec }));
-        append(m.generation.specReady, "ok");
       } catch {
         /* ignore */
       }
@@ -88,7 +59,6 @@ export function GenerationWatch({
                 );
           return { ...j, pages, progress_pct: data.done / data.total };
         });
-        append(m.generation.pageReady(data.page, data.total), "ok");
       } catch {
         /* ignore */
       }
@@ -113,10 +83,6 @@ export function GenerationWatch({
                 );
           return { ...j, pages };
         });
-        append(
-          m.generation.pageFailedMsg(data.page, data.message ?? ""),
-          "err",
-        );
       } catch {
         /* ignore */
       }
@@ -135,7 +101,6 @@ export function GenerationWatch({
               created_at: new Date().toISOString(),
             },
           ]);
-          append(data.message, "ok");
         }
       } catch {
         /* ignore */
@@ -143,25 +108,15 @@ export function GenerationWatch({
     });
 
     es.addEventListener("done", () => {
-      append(m.generation.allReady, "ok");
       setJob((j) => ({ ...j, status: "done", progress_pct: 1 }));
       es.close();
       router.refresh();
     });
 
-    es.addEventListener("error", (ev) => {
-      try {
-        const data = JSON.parse((ev as MessageEvent).data);
-        append(data.message ?? m.common.error, "err");
-      } catch {
-        // Browser EventSource fires "error" on disconnect too — tolerate it.
-      }
-    });
-
     return () => {
       es.close();
     };
-  }, [job.id, job.status, router, m]);
+  }, [job.id, job.status, router]);
 
   const pct = useMemo(
     () => Math.max(0, Math.min(100, Math.round(job.progress_pct * 100))),
@@ -192,9 +147,6 @@ export function GenerationWatch({
               new Date(job.created_at).toLocaleString(dateLocale),
             )}
           </span>
-          {job.current_step ? (
-            <span className="text-ink/55">· {job.current_step}</span>
-          ) : null}
         </div>
         {job.status !== "done" && job.status !== "failed" ? (
           <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-ink/5">
@@ -220,37 +172,6 @@ export function GenerationWatch({
         initialMessages={chat}
         jobStatus={job.status}
       />
-
-      <section>
-        <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">
-          {m.generation.activity}
-        </h2>
-        <ul className="mt-3 space-y-1 text-xs">
-          {log.length === 0 ? (
-            <li className="italic text-ink/40">
-              {job.status === "done"
-                ? m.generation.completedAlready
-                : m.generation.waitingEvents}
-            </li>
-          ) : (
-            log.map((l, i) => (
-              <li
-                key={i}
-                className={
-                  l.tone === "ok"
-                    ? "text-teal"
-                    : l.tone === "err"
-                      ? "text-red-600"
-                      : "text-ink/55"
-                }
-              >
-                <span className="font-mono text-ink/30">{l.ts}</span>{" "}
-                {l.message}
-              </li>
-            ))
-          )}
-        </ul>
-      </section>
     </div>
   );
 }
