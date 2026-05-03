@@ -2,13 +2,18 @@
 
 import Image from "next/image";
 
+import { useI18n } from "@/components/I18nProvider";
 import { backendUrl, type GeneratedPage } from "@/lib/api";
 
 export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
+  const { messages: m } = useI18n();
+
   if (pages.length === 0) {
     return (
       <section>
-        <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">Pages</h2>
+        <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">
+          {m.generation.pagesEyebrowLoading}
+        </h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           {[1, 2, 3, 4].map((n) => (
             <div
@@ -21,10 +26,17 @@ export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
     );
   }
 
+  const ready = pages.filter((p) => p.image_url).length;
+  const statusLabel: Record<string, string> = {
+    queued: m.generation.statusQueued,
+    done: m.generation.statusDone,
+    error: m.generation.pageFailed,
+  };
+
   return (
     <section>
       <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">
-        Pages — {pages.filter((p) => p.image_url).length}/{pages.length} ready
+        {m.generation.pagesEyebrowProgress(ready, pages.length)}
       </h2>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {pages.map((p) => (
@@ -44,20 +56,20 @@ export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
               ) : p.status === "error" ? (
                 <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
                   <span className="text-xs uppercase tracking-wider text-red-600">
-                    failed
+                    {m.generation.pageFailed}
                   </span>
                   <span className="text-xs text-ink/45">
-                    chat to retry this page
+                    {m.generation.pageFailedHint}
                   </span>
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-ink/40">
-                  rendering…
+                  {m.generation.pagePlaceholder}
                 </div>
               )}
             </div>
             <figcaption className="flex items-center justify-between px-3 py-2 text-xs text-ink/55">
-              <span>Page {p.page_number}</span>
+              <span>#{p.page_number}</span>
               <span
                 className={
                   p.status === "done"
@@ -67,7 +79,7 @@ export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
                       : ""
                 }
               >
-                {p.status}
+                {statusLabel[p.status] ?? p.status}
               </span>
             </figcaption>
           </figure>

@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useI18n } from "@/components/I18nProvider";
 import { clientLogout } from "@/lib/client";
 
 export function SignOutButton() {
   const router = useRouter();
+  const { messages: m } = useI18n();
   const [busy, setBusy] = useState(false);
 
   async function onClick() {
@@ -27,7 +29,7 @@ export function SignOutButton() {
       disabled={busy}
       className="text-xs uppercase tracking-[0.14em] text-ink/45 transition hover:text-violet disabled:opacity-40"
     >
-      {busy ? "…" : "Sign out"}
+      {busy ? "…" : m.brand.signOut}
     </button>
   );
 }

@@ -21,31 +21,33 @@ PAGE_VISION_PROMPT = """You are analyzing one page of a sample exam paper.
 Return a JSON object with these keys:
 
   "page_role": "cover" | "content" | "answer_key" | "blank" | "other"
-  "header_style": short string describing the school header / banner
-  "layout": short string (e.g. "two-column with boxed problems", "single column")
-  "typography_notes": short string about fonts, weight, problem numbering style
-  "problem_types": array of strings (e.g. ["multiple_choice", "fill_in_blank", "computation", "proof"])
+  "header_style": short string describing the school header / banner — IN THE SOURCE LANGUAGE of the page
+  "layout": short string (e.g. "两栏带题号方框", "单栏纯文本") — IN THE SOURCE LANGUAGE
+  "typography_notes": short string about fonts, weight, problem numbering style — IN THE SOURCE LANGUAGE
+  "problem_types": array of short phrases naming the problem types observed, IN THE SOURCE LANGUAGE. For Chinese exam papers use Chinese names like "选择题", "填空题", "计算题", "几何证明", "解答题", "应用题", "图表分析", "函数综合", "几何综合", "压轴题". Do NOT use English snake_case identifiers like "multiple_choice"
   "knowledge_points": array of short Chinese phrases naming the topics covered (e.g. ["二次函数", "相似三角形"])
-  "difficulty_signals": array of short strings (e.g. ["mostly easy", "one challenge problem near end"])
-  "notes": one short sentence of anything else worth remembering
+  "difficulty_signals": array of short strings IN THE SOURCE LANGUAGE (e.g. ["前易后难", "压轴题难度较大"])
+  "notes": one short sentence of anything else worth remembering — IN THE SOURCE LANGUAGE
 
-Reply with ONLY the JSON object."""
+The structural JSON keys themselves stay English; only the values follow the source language. Reply with ONLY the JSON object."""
 
-BANK_AGGREGATION_SYSTEM = """You are aggregating per-page analyses of multiple sample exam papers into a single bank-level profile that downstream code will use to GENERATE new exams in the same style and topic distribution. Be specific and practical, not vague."""
+BANK_AGGREGATION_SYSTEM = """You are aggregating per-page analyses of multiple sample exam papers into a single bank-level profile that downstream code will use to GENERATE new exams in the same style and topic distribution. Be specific and practical, not vague.
+
+Write all human-facing text fields (style_profile values, problem_type_distribution KEYS, difficulty_curve, summary) in the SAME language as the source samples — if the samples are Chinese exam papers, the output text MUST be Chinese. Keep the JSON object's structural keys (style_profile, header_template, layout_pattern, typography, tone, knowledge_point_distribution, problem_type_distribution, difficulty_curve, typical_page_count, summary) verbatim in English so callers can index them; only the values and the inner-distribution map keys (topic names, problem-type names) follow the source language."""
 
 BANK_AGGREGATION_PROMPT = """Below is a list of per-page analyses, grouped by source file. Produce a single JSON object with these keys:
 
   "style_profile": {{
-      "header_template": short description of the header style to reproduce,
-      "layout_pattern": short description of overall page layout,
-      "typography": short description of typography conventions,
-      "tone": one short sentence on overall feel ("formal regional mock-exam", "friendly school worksheet", etc)
+      "header_template": <short description of the header / banner style — in source language>,
+      "layout_pattern":  <short description of overall page layout — in source language>,
+      "typography":      <short description of typography conventions — in source language>,
+      "tone":            <one short sentence on overall feel — in source language>
   }},
-  "knowledge_point_distribution": object mapping Chinese topic name -> rough weight (number summing to 1.0),
-  "problem_type_distribution": object mapping type -> rough weight (sum to 1.0),
-  "difficulty_curve": short string describing difficulty progression across the exam,
+  "knowledge_point_distribution": object mapping topic-name (in source language, e.g. Chinese) -> rough weight summing to ~1.0,
+  "problem_type_distribution": object mapping problem-type-name (in source language, e.g. "选择题","填空题","解答题","几何证明") -> rough weight summing to ~1.0. Do NOT use English snake_case keys like "multiple_choice" when the samples are Chinese,
+  "difficulty_curve": short sentence describing difficulty progression — in source language,
   "typical_page_count": integer (median across samples),
-  "summary": one paragraph summarizing what a generated exam in this bank should look like.
+  "summary": one paragraph summarizing what a generated exam in this bank should look like — in source language.
 
 Source analyses:
 {analyses}

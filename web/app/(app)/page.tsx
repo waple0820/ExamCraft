@@ -1,34 +1,39 @@
 import Link from "next/link";
 
 import { CreateBankCard } from "@/components/CreateBankCard";
+import { getMessages } from "@/lib/i18n/server";
 import { listBanks } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  idle: { label: "awaiting samples", tone: "text-ink/40" },
-  running: { label: "analyzing…", tone: "text-violet" },
-  done: { label: "ready", tone: "text-teal" },
-  error: { label: "error", tone: "text-red-600" },
-};
-
 export default async function Dashboard() {
-  const banks = await listBanks();
+  const [banks, { messages: m, locale }] = await Promise.all([
+    listBanks(),
+    getMessages(),
+  ]);
+
+  const STATUS_COPY: Record<string, { label: string; tone: string }> = {
+    idle: { label: m.dashboard.statusIdle, tone: "text-ink/40" },
+    running: { label: m.dashboard.statusRunning, tone: "text-violet" },
+    done: { label: m.dashboard.statusReady, tone: "text-teal" },
+    error: { label: m.dashboard.statusError, tone: "text-red-600" },
+  };
+
+  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
 
   return (
     <div className="space-y-12">
       <div className="flex items-end justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-ink/50">
-            Question banks
+            {m.dashboard.eyebrow}
           </p>
           <h1 className="mt-3 font-display text-4xl tracking-tight">
-            Your shelf.
+            {m.dashboard.title}
           </h1>
         </div>
         <p className="max-w-xs text-right text-sm text-ink/55">
-          Each bank is a folder of sample exams. ExamCraft learns its style and
-          knowledge points, then generates new exams in that voice.
+          {m.dashboard.intro}
         </p>
       </div>
 
@@ -45,7 +50,9 @@ export default async function Dashboard() {
                 <h2 className="font-display text-2xl tracking-tight group-hover:text-violet">
                   {b.name}
                 </h2>
-                <span className={`text-xs uppercase tracking-wider ${status.tone}`}>
+                <span
+                  className={`text-xs uppercase tracking-wider ${status.tone}`}
+                >
                   {status.label}
                 </span>
               </div>
@@ -54,10 +61,14 @@ export default async function Dashboard() {
                   {b.description}
                 </p>
               ) : (
-                <p className="mt-3 text-sm italic text-ink/30">No description.</p>
+                <p className="mt-3 text-sm italic text-ink/30">
+                  {m.dashboard.noDescription}
+                </p>
               )}
               <p className="mt-6 text-xs uppercase tracking-wider text-ink/35">
-                created {new Date(b.created_at).toLocaleDateString()}
+                {m.dashboard.createdAt(
+                  new Date(b.created_at).toLocaleDateString(dateLocale),
+                )}
               </p>
             </Link>
           );
@@ -68,7 +79,7 @@ export default async function Dashboard() {
 
       {banks.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-ink/15 p-10 text-center text-sm text-ink/50">
-          No banks yet. Click the empty card above to create your first one.
+          {m.dashboard.empty}
         </div>
       ) : null}
     </div>

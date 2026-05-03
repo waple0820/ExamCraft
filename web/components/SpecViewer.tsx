@@ -2,21 +2,20 @@
 
 import { useState } from "react";
 
+import { useI18n } from "@/components/I18nProvider";
 import type { ExamSpec } from "@/lib/api";
 
 export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
+  const { messages: m } = useI18n();
   const [showAnswers, setShowAnswers] = useState(false);
-  const [showRaw, setShowRaw] = useState(false);
 
   if (!spec) {
     return (
       <section>
         <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">
-          Exam spec
+          {m.spec.placeholderEyebrow}
         </h2>
-        <p className="mt-2 text-sm italic text-ink/40">
-          Spec arrives once the model finishes building it.
-        </p>
+        <p className="mt-2 text-sm italic text-ink/40">{m.spec.placeholder}</p>
       </section>
     );
   }
@@ -28,24 +27,17 @@ export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
     <section>
       <div className="flex items-baseline justify-between">
         <h2 className="text-xs uppercase tracking-[0.16em] text-ink/45">
-          Exam spec — source of truth
+          {m.spec.title}
         </h2>
-        <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-ink/40">
-          <button
-            type="button"
-            onClick={() => setShowAnswers((s) => !s)}
-            className={showAnswers ? "text-violet" : "hover:text-violet"}
-          >
-            {showAnswers ? "hide answers" : "show answers"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowRaw((s) => !s)}
-            className={showRaw ? "text-violet" : "hover:text-violet"}
-          >
-            {showRaw ? "hide raw" : "raw json"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowAnswers((s) => !s)}
+          className={`text-xs uppercase tracking-wider ${
+            showAnswers ? "text-violet" : "text-ink/40 hover:text-violet"
+          }`}
+        >
+          {showAnswers ? m.spec.hideAnswers : m.spec.showAnswers}
+        </button>
       </div>
 
       <div className="mt-4 rounded-2xl border border-ink/10 bg-ivory/60 p-6 shadow-soft">
@@ -60,13 +52,13 @@ export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
         ) : null}
 
         {sections.length === 0 ? (
-          <p className="text-sm italic text-ink/40">(empty spec)</p>
+          <p className="text-sm italic text-ink/40">{m.spec.empty}</p>
         ) : (
           <ol className="space-y-8">
             {sections.map((s, idx) => (
               <li key={idx}>
                 <h3 className="font-display text-xl tracking-tight">
-                  {s.name ?? `Section ${idx + 1}`}
+                  {s.name ?? m.spec.section(idx + 1)}
                 </h3>
                 {s.instructions ? (
                   <p className="mt-1 text-xs italic text-ink/45">
@@ -100,18 +92,28 @@ export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
                             ) : null}
                             {typeof p.difficulty === "number" ? (
                               <span>
-                                difficulty {(p.difficulty * 10).toFixed(1)}/10
+                                {m.spec.difficulty(
+                                  (p.difficulty * 10).toFixed(1),
+                                )}
                               </span>
                             ) : null}
                             {typeof p.points === "number" ? (
-                              <span>· {p.points} pts</span>
+                              <span>· {m.spec.points(p.points)}</span>
                             ) : null}
-                            <span>· {p.type}</span>
+                            <span>
+                              ·{" "}
+                              {m.analysis.problemTypeLabels[p.type] ??
+                                m.analysis.problemTypeLabels[
+                                  p.type?.toLowerCase()
+                                ] ??
+                                p.type?.replace(/_/g, " ") ??
+                                ""}
+                            </span>
                           </div>
                           {showAnswers ? (
                             <p className="mt-2 rounded-lg bg-teal/10 p-2 text-sm text-teal">
                               <span className="text-xs uppercase tracking-wider">
-                                answer:{" "}
+                                {m.spec.answer}
                               </span>
                               {p.answer}
                             </p>
@@ -127,11 +129,6 @@ export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
         )}
       </div>
 
-      {showRaw ? (
-        <pre className="mt-3 max-h-[480px] overflow-auto rounded-xl border border-ink/10 bg-white/40 p-4 text-[11px] text-ink/65">
-          {JSON.stringify(spec, null, 2)}
-        </pre>
-      ) : null}
     </section>
   );
 }

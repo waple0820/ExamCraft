@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useI18n } from "@/components/I18nProvider";
 import type { ChatMessage } from "@/lib/api";
 import { clientPostChat } from "@/lib/client";
 
@@ -16,6 +17,7 @@ export function ReviseChat({
   jobStatus: "queued" | "running" | "done" | "failed";
   onAssistantReply?: (content: string) => void;
 }) {
+  const { messages: m } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,8 +45,8 @@ export function ReviseChat({
     setBusy(true);
     try {
       const reply = await clientPostChat(jobId, text);
-      setMessages((m) => [
-        ...m,
+      setMessages((prev) => [
+        ...prev,
         {
           id: reply.id,
           role: "user",
@@ -65,9 +67,11 @@ export function ReviseChat({
   useEffect(() => {
     if (!onAssistantReply) return;
     // expose a way for parent to push assistant turns
-    (window as unknown as { __examcraftPushAssistant?: (s: string) => void }).__examcraftPushAssistant = (s: string) => {
-      setMessages((m) => [
-        ...m,
+    (
+      window as unknown as { __examcraftPushAssistant?: (s: string) => void }
+    ).__examcraftPushAssistant = (s: string) => {
+      setMessages((prev) => [
+        ...prev,
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
@@ -77,43 +81,48 @@ export function ReviseChat({
       ]);
     };
     return () => {
-      (window as unknown as { __examcraftPushAssistant?: (s: string) => void }).__examcraftPushAssistant = undefined;
+      (
+        window as unknown as { __examcraftPushAssistant?: (s: string) => void }
+      ).__examcraftPushAssistant = undefined;
     };
   }, [onAssistantReply]);
+
+  const statusHint =
+    jobStatus === "done"
+      ? m.chat.statusReady
+      : jobStatus === "running"
+        ? m.chat.statusRunning
+        : jobStatus === "failed"
+          ? m.chat.statusFailed
+          : m.chat.statusQueued;
 
   return (
     <aside className="rounded-2xl border border-ink/10 bg-white/60 p-6 shadow-soft">
       <div className="flex items-baseline justify-between">
-        <h2 className="font-display text-2xl tracking-tight">Talk it over</h2>
+        <h2 className="font-display text-2xl tracking-tight">{m.chat.title}</h2>
         <span className="text-xs uppercase tracking-wider text-ink/40">
-          edits the spec
+          {m.chat.subtitle}
         </span>
       </div>
-      <p className="mt-2 text-sm text-ink/55">
-        Spot something off? Tell ExamCraft. It revises the spec and re-renders
-        only the pages that changed.
-      </p>
+      <p className="mt-2 text-sm text-ink/55">{m.chat.desc}</p>
 
       <div
         ref={scrollRef}
         className="mt-4 max-h-[420px] space-y-3 overflow-y-auto rounded-xl border border-ink/5 bg-ivory/50 p-4"
       >
         {messages.length === 0 ? (
-          <p className="text-sm italic text-ink/40">
-            No revisions yet. Examples: &ldquo;把第3题换成关于二次函数的题&rdquo;,
-            &ldquo;再加一道圆的解答题&rdquo;, &ldquo;难度调低一点&rdquo;.
-          </p>
+          <p className="text-sm italic text-ink/40">{m.chat.examplesEmpty}</p>
         ) : (
-          messages.map((m) => (
+          messages.map((msg) => (
             <div
-              key={m.id}
+              key={msg.id}
               className={
-                m.role === "user"
+                msg.role === "user"
                   ? "ml-auto max-w-[80%] rounded-2xl bg-violet/10 px-3 py-2 text-sm text-ink/85"
                   : "max-w-[80%] rounded-2xl bg-white px-3 py-2 text-sm text-ink/80 shadow-soft"
               }
             >
-              {m.content}
+              {msg.content}
             </div>
           ))
         )}
@@ -127,29 +136,21 @@ export function ReviseChat({
           maxLength={2000}
           placeholder={
             jobStatus === "running"
-              ? "Working on a previous revision…"
-              : "What should change?"
+              ? m.chat.waitForCurrent
+              : m.chat.sendPlaceholder
           }
           disabled={inputDisabled}
           className="w-full resize-none rounded-xl border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-violet focus:ring-2 focus:ring-violet/30 disabled:opacity-60"
         />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-ink/35">
-            {jobStatus === "done"
-              ? "Ready"
-              : jobStatus === "running"
-                ? "Wait for current run"
-                : jobStatus === "failed"
-                  ? "Generation failed — fix on the bank page"
-                  : "Queued"}
-          </span>
+          <span className="text-xs text-ink/35">{statusHint}</span>
           <button
             type="submit"
             disabled={inputDisabled || !content.trim()}
             className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-ivory hover:bg-violet disabled:opacity-40"
           >
-            {busy ? "Sending…" : "Send"}
+            {busy ? m.chat.sending : m.chat.send}
           </button>
         </div>
       </form>
