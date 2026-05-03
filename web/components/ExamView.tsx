@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import { useI18n } from "@/components/I18nProvider";
+import { MathText } from "@/components/MathText";
 import {
   backendUrl,
   type ExamProblem,
@@ -203,14 +204,16 @@ function ProblemCard({
             ) : null}
           </div>
 
-          <p className="whitespace-pre-wrap text-base text-ink/90">
+          <MathText className="text-base text-ink/90">
             {problem.content}
-          </p>
+          </MathText>
 
           {problem.choices && problem.choices.length > 0 ? (
             <ul className="grid grid-cols-1 gap-1 text-ink/80 sm:grid-cols-2">
               {problem.choices.map((c, i) => (
-                <li key={i}>{c}</li>
+                <li key={i}>
+                  <MathText>{c}</MathText>
+                </li>
               ))}
             </ul>
           ) : null}
@@ -224,7 +227,7 @@ function ProblemCard({
               <span className="text-xs uppercase tracking-wider">
                 {m.spec.answer}
               </span>
-              {problem.answer}
+              <MathText>{problem.answer}</MathText>
             </p>
           ) : null}
         </div>

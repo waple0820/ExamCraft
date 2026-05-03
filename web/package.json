@@ -10,8 +10,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/katex": "^0.16.8",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
+    "katex": "^0.16.45",
     "lucide-react": "^0.468.0",
     "next": "^15.5.15",
     "react": "19.0.0",
