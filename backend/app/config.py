@@ -36,12 +36,14 @@ class Settings(BaseSettings):
 
     # Auth
     session_secret: str = Field(default="dev-only-not-for-prod", alias="EXAMCRAFT_SESSION_SECRET")
-    session_cookie_name: str = "examcraft_session"
     session_max_age_days: int = 30
 
-    # Storage
-    data_dir: Path = DATA_ROOT
-    db_path: Path = DATA_ROOT / "examcraft.db"
+    # Storage (data_dir is env-overridable so tests can isolate)
+    data_dir: Path = Field(default=DATA_ROOT, alias="EXAMCRAFT_DATA_DIR")
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "examcraft.db"
 
     @property
     def database_url(self) -> str:
@@ -75,3 +77,9 @@ def get_settings() -> Settings:
         ):
             d.mkdir(parents=True, exist_ok=True)
     return _settings
+
+
+def reset_settings_cache() -> None:
+    """Clear cached settings — used by tests after monkeypatching env vars."""
+    global _settings
+    _settings = None
