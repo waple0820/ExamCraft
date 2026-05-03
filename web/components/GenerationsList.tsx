@@ -39,8 +39,6 @@ export function GenerationsList({ items }: { items: GenerationSummary[] }) {
                 </p>
                 <p className="mt-1 text-xs text-ink/45">
                   <span className={status.tone}>{status.label}</span>
-                  {" · "}
-                  {m.generate.pages(g.page_count)}
                   {g.status === "running" ? (
                     <> · {Math.round(g.progress_pct * 100)}%</>
                   ) : null}

@@ -193,6 +193,8 @@ export const en: Messages = {
     liveLayingOut: "Questions are ready, laying out the pages…",
     liveRendering: (done: number, total: number) =>
       `Generating page ${done + 1} / ${total}`,
+    liveRenderingFigures: (done: number, total: number) =>
+      `Figures rendered: ${done} / ${total}`,
     liveFinishing: "Wrapping up…",
     statusQueued: "queued",
     statusRunning: "running",
@@ -210,6 +212,15 @@ export const en: Messages = {
     difficulty: (n: string) => `difficulty ${n}/10`,
     points: (n: number) => `${n} pts`,
     empty: "(no questions)",
+  },
+  exam: {
+    eyebrow: "Exam",
+    print: "Print",
+    figuresProgress: (done: number, total: number) =>
+      `Figures ${done}/${total}`,
+    figureRendering: "Figure rendering…",
+    figureFailed: "Figure failed",
+    figureRetryHint: "Chat to retry",
   },
   chat: {
     title: "Talk it over",

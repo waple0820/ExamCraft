@@ -57,11 +57,28 @@ export type BankAnalysis = {
 
 export type GenerationStatus = "queued" | "running" | "done" | "failed";
 
-export type GeneratedPage = {
-  page_number: number;
-  status: "queued" | "done" | "error";
-  image_url: string | null;
-  error: string | null;
+export type FigureStatus = "queued" | "done" | "error";
+
+export type ProblemFigure =
+  | { needed: false; description?: string }
+  | {
+      needed: true;
+      description: string;
+      status?: FigureStatus;
+      error?: string | null;
+      image_url?: string | null;
+    };
+
+export type ExamProblem = {
+  id: number;
+  type: string;
+  content: string;
+  choices?: string[];
+  answer: string;
+  knowledge_point?: string;
+  difficulty?: number;
+  points?: number;
+  figure?: ProblemFigure;
 };
 
 export type ExamSpec = {
@@ -70,16 +87,7 @@ export type ExamSpec = {
   sections?: Array<{
     name?: string;
     instructions?: string;
-    problems?: Array<{
-      id: number;
-      type: string;
-      content: string;
-      choices?: string[];
-      answer: string;
-      knowledge_point?: string;
-      difficulty?: number;
-      points?: number;
-    }>;
+    problems?: ExamProblem[];
   }>;
 };
 
@@ -94,7 +102,6 @@ export type Generation = {
   started_at: string | null;
   finished_at: string | null;
   spec: ExamSpec | null;
-  pages: GeneratedPage[];
 };
 
 export type GenerationSummary = {
@@ -104,7 +111,6 @@ export type GenerationSummary = {
   progress_pct: number;
   created_at: string;
   finished_at: string | null;
-  page_count: number;
 };
 
 export type ChatMessage = {
