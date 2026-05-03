@@ -39,7 +39,7 @@ class SampleOut(BaseModel):
     created_at: str
 
     @classmethod
-    def from_model(cls, s: SampleExam) -> "SampleOut":
+    def from_model(cls, s: SampleExam) -> SampleOut:
         return cls(
             id=s.id,
             bank_id=s.bank_id,

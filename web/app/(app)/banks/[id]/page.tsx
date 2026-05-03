@@ -2,9 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { GenerateButton } from "@/components/GenerateButton";
+import { GenerationsList } from "@/components/GenerationsList";
 import { SampleList } from "@/components/SampleList";
 import { SampleUploader } from "@/components/SampleUploader";
-import { getBank, getBankAnalysis, listSamples } from "@/lib/server";
+import {
+  getBank,
+  getBankAnalysis,
+  listGenerations,
+  listSamples,
+} from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +24,12 @@ export default async function BankDetail({
   const bank = await getBank(id);
   if (!bank) notFound();
 
-  const [samples, analysis] = await Promise.all([
+  const [samples, analysis, generations] = await Promise.all([
     listSamples(id),
     getBankAnalysis(id),
+    listGenerations(id),
   ]);
+  const ready = analysis.status === "done";
 
   return (
     <div className="space-y-12">
@@ -60,15 +69,28 @@ export default async function BankDetail({
         <AnalysisPanel bankId={id} initial={analysis} />
       </section>
 
-      <section className="rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
-        <h2 className="font-display text-2xl tracking-tight">Generate</h2>
-        <p className="mt-2 text-sm text-ink/55">
-          Once the bank profile is ready, you&apos;ll be able to generate
-          brand-new exams in this style.
+      <section className="space-y-4 rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-2xl tracking-tight">Generate</h2>
+          <span className="text-xs uppercase tracking-wider text-ink/40">
+            new exam in this bank&apos;s style
+          </span>
+        </div>
+        <p className="text-sm text-ink/55">
+          Builds a fresh exam spec, plans page layout, then renders each page
+          via gpt-image-2. The structured spec (the printable, editable source
+          of truth) and the stylized page images live side-by-side.
         </p>
-        <p className="mt-6 text-sm italic text-ink/40">
-          Generation lands in M4.
-        </p>
+        <GenerateButton
+          bankId={id}
+          ready={ready}
+          hint={
+            ready
+              ? undefined
+              : "Upload at least one sample and wait for the bank profile to aggregate before generating."
+          }
+        />
+        <GenerationsList items={generations} />
       </section>
     </div>
   );

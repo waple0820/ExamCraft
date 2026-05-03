@@ -32,6 +32,7 @@ dev = [
 
 [project.scripts]
 examcraft-server = "app.cli:run"
+examcraft-seed = "app.seed:main"
 
 [build-system]
 requires = ["hatchling"]

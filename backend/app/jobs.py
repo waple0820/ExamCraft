@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable
-from typing import Callable
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import update
 
@@ -32,6 +31,9 @@ class JobRegistry:
 
         task.add_done_callback(_done)
 
+    def in_flight(self) -> int:
+        return len(self._tasks)
+
 
 _REGISTRY = JobRegistry()
 
@@ -43,7 +45,7 @@ def get_registry() -> JobRegistry:
 async def mark_in_flight_jobs_failed_on_startup() -> None:
     """Any rows left in extracting/analyzing/running on boot were interrupted by
     a previous shutdown. Mark them as failed so the UI offers retry."""
-    from app.models import Bank, SampleExam
+    from app.models import Bank, GenerationJob, SampleExam
 
     _, sm = _ensure()
     async with sm() as session:
@@ -59,5 +61,10 @@ async def mark_in_flight_jobs_failed_on_startup() -> None:
                 analysis_status="error",
                 analysis_error="interrupted by server restart",
             )
+        )
+        await session.execute(
+            update(GenerationJob)
+            .where(GenerationJob.status.in_(["queued", "running"]))
+            .values(status="failed", error="interrupted by server restart")
         )
         await session.commit()

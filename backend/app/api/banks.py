@@ -27,7 +27,7 @@ class BankOut(BaseModel):
     created_at: str
 
     @classmethod
-    def from_model(cls, b: Bank) -> "BankOut":
+    def from_model(cls, b: Bank) -> BankOut:
         return cls(
             id=b.id,
             name=b.name,
