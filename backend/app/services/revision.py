@@ -15,6 +15,7 @@ from app.services import image_gen, llm
 from app.services.generation import (
     PAGE_LAYOUT_PROMPT,
     PAGE_LAYOUT_SYSTEM,
+    _set_status,
     _summarize_spec_for_layout,
 )
 from app.sse import get_bus
@@ -106,6 +107,7 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
 
     if not job or not bank or not user_msg or not job.spec_json:
         await _publish(channel, "error", message="cannot revise: missing job/spec/message")
+        await _set_status(job_id, status="failed", error="missing job/spec/message")
         return
 
     try:
@@ -162,6 +164,7 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         new_layout = await _replan_layout(bank, updated_spec)
         new_pages = new_layout.get("pages") or []
         if not new_pages:
+            await _set_status(job_id, status="done", current_step="done")
             await _publish(channel, "done", message="spec updated; no page changes")
             return
 
@@ -221,6 +224,7 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         removed_pages = [n for n in old_prompts if n not in new_prompts]
 
         if not changed_pages and not removed_pages:
+            await _set_status(job_id, status="done", current_step="done")
             await _publish(channel, "done", message="spec tweaked; no visible page changes")
             return
 
@@ -339,6 +343,16 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
                 f"all {len(changed_pages)} re-renders failed — see per-page errors"
             )
 
+        await _set_status(
+            job_id,
+            status="done",
+            progress_pct=1.0,
+            current_step=(
+                "done"
+                if not failed
+                else f"done with {failed} failed page(s) — chat to retry"
+            ),
+        )
         await _publish(
             channel,
             "done",
@@ -349,4 +363,5 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("revision %s failed", job_id)
+        await _set_status(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
         await _publish(channel, "error", message=f"{type(exc).__name__}: {exc}")
