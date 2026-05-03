@@ -89,6 +89,29 @@ export function GenerationWatch({
       }
     });
 
+    es.addEventListener("page_error", (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data);
+        setJob((j) => {
+          const idx = j.pages.findIndex((p) => p.page_number === data.page);
+          const updated = {
+            page_number: data.page,
+            status: "error" as const,
+            image_url: null,
+            error: data.message ?? "render failed",
+          };
+          const pages =
+            idx >= 0
+              ? j.pages.map((p, i) => (i === idx ? updated : p))
+              : [...j.pages, updated].sort((a, b) => a.page_number - b.page_number);
+          return { ...j, pages };
+        });
+        append(`Page ${data.page} failed — ${data.message ?? "retry via chat"}`, "err");
+      } catch {
+        /* ignore */
+      }
+    });
+
     es.addEventListener("chat", (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent).data);

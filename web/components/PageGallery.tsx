@@ -41,6 +41,15 @@ export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
                   className="object-contain"
                   unoptimized
                 />
+              ) : p.status === "error" ? (
+                <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+                  <span className="text-xs uppercase tracking-wider text-red-600">
+                    failed
+                  </span>
+                  <span className="text-xs text-ink/45">
+                    chat to retry this page
+                  </span>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-ink/40">
                   rendering…
@@ -49,7 +58,15 @@ export function PageGallery({ pages }: { pages: GeneratedPage[] }) {
             </div>
             <figcaption className="flex items-center justify-between px-3 py-2 text-xs text-ink/55">
               <span>Page {p.page_number}</span>
-              <span className={p.status === "done" ? "text-teal" : ""}>
+              <span
+                className={
+                  p.status === "done"
+                    ? "text-teal"
+                    : p.status === "error"
+                      ? "text-red-600"
+                      : ""
+                }
+              >
                 {p.status}
               </span>
             </figcaption>

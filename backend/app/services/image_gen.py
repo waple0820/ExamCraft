@@ -119,13 +119,29 @@ async def generate_many(
     *,
     size: str = DEFAULT_SIZE,
     on_page: Callable[[int, Path], Awaitable[None]] | None = None,  # noqa: F821
-) -> list[Path]:
-    """Render N pages with bounded concurrency. Calls on_page(idx, path) per success."""
+    on_page_error: Callable[[int, Exception], Awaitable[None]] | None = None,  # noqa: F821
+) -> list[Path | Exception]:
+    """Render N pages with bounded concurrency.
+
+    Returns a list of length len(prompts); each element is either a Path on
+    success or the Exception that caused the page to fail after all retries.
+    Partial failure does NOT raise — the caller decides whether to fail the
+    overall job.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    async def _one(idx: int, prompt: str) -> tuple[int, Path]:
+    async def _one(idx: int, prompt: str) -> tuple[int, Path | Exception]:
         path = out_dir / f"page_{idx + 1:03d}.png"
-        await generate_one(prompt, path, size=size)
+        try:
+            await generate_one(prompt, path, size=size)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("page %d: failed after retries: %s", idx + 1, exc)
+            if on_page_error is not None:
+                try:
+                    await on_page_error(idx + 1, exc)
+                except Exception:  # noqa: BLE001
+                    logger.exception("on_page_error callback failed for page %d", idx + 1)
+            return idx, exc
         if on_page is not None:
             try:
                 await on_page(idx + 1, path)
@@ -134,17 +150,8 @@ async def generate_many(
         return idx, path
 
     tasks = [_one(i, p) for i, p in enumerate(prompts)]
-    results: list[Path | None] = [None] * len(prompts)
-    errors: list[BaseException] = []
+    results: list[Path | Exception] = [RuntimeError("not started")] * len(prompts)
     for fut in asyncio.as_completed(tasks):
-        try:
-            idx, path = await fut
-            results[idx] = path
-        except BaseException as exc:  # noqa: BLE001
-            errors.append(exc)
-
-    if errors:
-        # Surface the first exception; partial results stay on disk.
-        raise errors[0]
-
-    return [p for p in results if p is not None]
+        idx, outcome = await fut
+        results[idx] = outcome
+    return results

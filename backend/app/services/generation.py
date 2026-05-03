@@ -270,6 +270,7 @@ async def run_generation(job_id: str) -> None:
         )
 
         completed_count = 0
+        failed_count = 0
         total = len(prompts)
 
         async def on_page(page_number: int, path: Path) -> None:
@@ -288,7 +289,7 @@ async def run_generation(job_id: str) -> None:
                     row.image_path = str(path)
                     row.status = "done"
                     await s.commit()
-            pct = 0.3 + 0.65 * (completed_count / max(total, 1))
+            pct = 0.3 + 0.65 * ((completed_count + failed_count) / max(total, 1))
             await _set_status(job_id, progress_pct=pct)
             await _publish(
                 channel,
@@ -299,15 +300,63 @@ async def run_generation(job_id: str) -> None:
                 total=total,
             )
 
-        await image_gen.generate_many(prompts, job_dir, on_page=on_page)
+        async def on_page_error(page_number: int, exc: Exception) -> None:
+            nonlocal failed_count
+            failed_count += 1
+            async with sm() as s:
+                row = (
+                    await s.execute(
+                        select(GeneratedPage).where(
+                            GeneratedPage.job_id == job_id,
+                            GeneratedPage.page_number == page_number,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if row is not None:
+                    row.status = "error"
+                    row.error = f"{type(exc).__name__}: {exc}"[:500]
+                    await s.commit()
+            pct = 0.3 + 0.65 * ((completed_count + failed_count) / max(total, 1))
+            await _set_status(job_id, progress_pct=pct)
+            await _publish(
+                channel,
+                "page_error",
+                page=page_number,
+                message=f"{type(exc).__name__}: {exc}"[:200],
+                done=completed_count,
+                failed=failed_count,
+                total=total,
+            )
 
-        await _set_status(
-            job_id,
-            status="done",
-            progress_pct=1.0,
-            current_step="done",
+        await image_gen.generate_many(
+            prompts, job_dir, on_page=on_page, on_page_error=on_page_error
         )
-        await _publish(channel, "done", message="all pages ready")
+
+        if completed_count == 0:
+            raise RuntimeError(
+                f"all {total} page render attempt(s) failed — see per-page errors"
+            )
+
+        if failed_count > 0:
+            await _set_status(
+                job_id,
+                status="done",
+                progress_pct=1.0,
+                current_step=f"done with {failed_count} failed page(s) — chat to retry",
+            )
+            await _publish(
+                channel,
+                "done",
+                message=f"{completed_count}/{total} pages rendered; {failed_count} failed",
+            )
+        else:
+            await _set_status(
+                job_id,
+                status="done",
+                progress_pct=1.0,
+                current_step="done",
+            )
+            await _publish(channel, "done", message="all pages ready")
     except Exception as exc:  # noqa: BLE001
         logger.exception("generation %s failed", job_id)
         await _set_status(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
