@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 
 import { I18nProvider } from "@/components/I18nProvider";
-import { messagesByLocale } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n/server";
 
 import "./globals.css";
@@ -37,13 +36,12 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const locale = await getLocale();
-  const messages = messagesByLocale[locale];
   const htmlLang = locale === "zh" ? "zh-CN" : "en";
 
   return (
     <html lang={htmlLang} className={`${inter.variable} ${fraunces.variable}`}>
       <body className="font-sans">
-        <I18nProvider locale={locale} messages={messages}>
+        <I18nProvider locale={locale}>
           <main className="min-h-screen">{children}</main>
         </I18nProvider>
       </body>
