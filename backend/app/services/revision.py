@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -153,12 +154,29 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         await _publish(channel, "spec_ready", spec=updated_spec)
         await _publish(channel, "chat", role="assistant", message=reply_text)
 
-        # Re-plan layout, compare to existing prompts, re-render where changed.
+        # Re-plan layout, then figure out which pages actually need re-rendering.
+        # The layout planner produces slightly different prompt text each call
+        # even when the underlying content is identical, so naively diffing
+        # prompt strings would re-render everything. Instead diff the *set of
+        # problem ids per page* — that's the real semantic change.
         new_layout = await _replan_layout(bank, updated_spec)
         new_pages = new_layout.get("pages") or []
         if not new_pages:
             await _publish(channel, "done", message="spec updated; no page changes")
             return
+
+        previous_layout_path = settings.jobs_dir / job_id / "prompts.json"
+        old_problem_ids_by_page: dict[int, frozenset[int]] = {}
+        if previous_layout_path.exists():
+            try:
+                prev = json.loads(previous_layout_path.read_text(encoding="utf-8"))
+                for entry in prev.get("pages") or []:
+                    n = int(entry.get("page_number") or 0)
+                    ids = entry.get("problem_ids") or []
+                    if n > 0:
+                        old_problem_ids_by_page[n] = frozenset(int(i) for i in ids)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                old_problem_ids_by_page = {}
 
         old_prompts: dict[int, str] = {}
         async with sm() as session:
@@ -172,17 +190,33 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
             for r in old_rows:
                 old_prompts[r.page_number] = r.prompt or ""
 
-        # Identify changed / new / removed pages.
         new_prompts: dict[int, str] = {}
+        new_problem_ids_by_page: dict[int, frozenset[int]] = {}
         for entry in new_pages:
             n = int(entry.get("page_number") or 0)
             if n <= 0:
                 continue
             new_prompts[n] = str(entry.get("prompt") or "")
+            ids = entry.get("problem_ids") or []
+            try:
+                new_problem_ids_by_page[n] = frozenset(int(i) for i in ids)
+            except (TypeError, ValueError):
+                new_problem_ids_by_page[n] = frozenset()
 
+        # Persist the new layout for the next revision's diff.
+        previous_layout_path.parent.mkdir(parents=True, exist_ok=True)
+        previous_layout_path.write_text(
+            json.dumps(new_layout, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        # A page needs re-rendering if it's new, missing from the old layout,
+        # or its set of problem_ids changed. Pages with the same problem_ids
+        # are kept as-is — the existing image still represents them.
         changed_pages: list[int] = []
-        for n, prompt in sorted(new_prompts.items()):
-            if old_prompts.get(n) != prompt:
+        for n in sorted(new_prompts):
+            old_ids = old_problem_ids_by_page.get(n)
+            new_ids = new_problem_ids_by_page.get(n, frozenset())
+            if old_ids is None or old_ids != new_ids or n not in old_prompts:
                 changed_pages.append(n)
         removed_pages = [n for n in old_prompts if n not in new_prompts]
 
@@ -236,51 +270,83 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
                     row.image_path = None
             await session.commit()
 
-        # Render the changed pages.
+        # Render the changed pages — concurrently, with the same shared
+        # semaphore in image_gen, so wall-clock matches the generate path.
         job_dir = settings.jobs_dir / job_id
-        for n in changed_pages:
+        completed = 0
+        failed = 0
+
+        async def _render_one(page_number: int) -> None:
+            nonlocal completed, failed
             try:
                 path = await image_gen.generate_one(
-                    new_prompts[n], job_dir / f"page_{n:03d}.png"
-                )
-                async with sm() as session:
-                    row = (
-                        await session.execute(
-                            select(GeneratedPage).where(
-                                GeneratedPage.job_id == job_id,
-                                GeneratedPage.page_number == n,
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        row.image_path = str(path)
-                        row.status = "done"
-                        await session.commit()
-                await _publish(
-                    channel,
-                    "page_ready",
-                    page=n,
-                    image_url=f"/api/generations/{job_id}/pages/{n}/image",
-                    done=changed_pages.index(n) + 1,
-                    total=len(changed_pages),
+                    new_prompts[page_number], job_dir / f"page_{page_number:03d}.png"
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.exception("revise: page %d render failed", n)
-                async with sm() as session:
+                failed += 1
+                logger.exception("revise: page %d render failed", page_number)
+                async with sm() as s:
                     row = (
-                        await session.execute(
+                        await s.execute(
                             select(GeneratedPage).where(
                                 GeneratedPage.job_id == job_id,
-                                GeneratedPage.page_number == n,
+                                GeneratedPage.page_number == page_number,
                             )
                         )
                     ).scalar_one_or_none()
                     if row is not None:
                         row.status = "error"
                         row.error = f"{type(exc).__name__}: {exc}"[:500]
-                        await session.commit()
+                        await s.commit()
+                await _publish(
+                    channel,
+                    "page_error",
+                    page=page_number,
+                    message=f"{type(exc).__name__}: {exc}"[:200],
+                    done=completed,
+                    failed=failed,
+                    total=len(changed_pages),
+                )
+                return
+            completed += 1
+            async with sm() as s:
+                row = (
+                    await s.execute(
+                        select(GeneratedPage).where(
+                            GeneratedPage.job_id == job_id,
+                            GeneratedPage.page_number == page_number,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if row is not None:
+                    row.image_path = str(path)
+                    row.status = "done"
+                    row.error = None
+                    await s.commit()
+            await _publish(
+                channel,
+                "page_ready",
+                page=page_number,
+                image_url=f"/api/generations/{job_id}/pages/{page_number}/image",
+                done=completed,
+                total=len(changed_pages),
+            )
 
-        await _publish(channel, "done", message="revision complete")
+        await asyncio.gather(*(_render_one(n) for n in changed_pages))
+
+        if failed and not completed:
+            raise RuntimeError(
+                f"all {len(changed_pages)} re-renders failed — see per-page errors"
+            )
+
+        await _publish(
+            channel,
+            "done",
+            message=(
+                f"revision complete · {completed}/{len(changed_pages)} re-rendered"
+                + (f", {failed} failed" if failed else "")
+            ),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("revision %s failed", job_id)
         await _publish(channel, "error", message=f"{type(exc).__name__}: {exc}")
