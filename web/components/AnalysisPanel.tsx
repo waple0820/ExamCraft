@@ -236,7 +236,7 @@ function DistBars({
     <ul className="space-y-1.5">
       {entries.map(([k, v]) => {
         const pct = (Number(v) || 0) / max;
-        const label = labelMap?.[k] ?? k;
+        const label = labelMap?.[k] ?? labelMap?.[k.toLowerCase()] ?? k.replace(/_/g, " ");
         return (
           <li
             key={k}

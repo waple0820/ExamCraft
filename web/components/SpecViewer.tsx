@@ -101,7 +101,13 @@ export function SpecViewer({ spec }: { spec: ExamSpec | null }) {
                               <span>· {m.spec.points(p.points)}</span>
                             ) : null}
                             <span>
-                              · {m.analysis.problemTypeLabels[p.type] ?? p.type}
+                              ·{" "}
+                              {m.analysis.problemTypeLabels[p.type] ??
+                                m.analysis.problemTypeLabels[
+                                  p.type?.toLowerCase()
+                                ] ??
+                                p.type?.replace(/_/g, " ") ??
+                                ""}
                             </span>
                           </div>
                           {showAnswers ? (
