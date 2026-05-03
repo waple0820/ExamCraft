@@ -9,6 +9,10 @@ a chat loop for fixing problems on the fly.
 
 Built for one user, one Mac, one browser. Passwordless, single-tenant.
 
+> **Want to put this on the public internet for family/friends?** See
+> [`DEPLOYMENT.md`](./DEPLOYMENT.md) — Vercel + Fly.io + Cloudflare,
+> ~¥100–400/month.
+
 ## Quick start
 
 ### 1. System dependencies (one time)
