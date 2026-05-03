@@ -25,6 +25,7 @@ export default async function GenerationPage({
       <Link
         href={`/banks/${initial.bank_id}` as never}
         className="text-sm text-ink/50 hover:text-violet"
+        data-no-print
       >
         {m.generation.backToBank}
       </Link>

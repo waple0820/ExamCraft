@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -14,18 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.db import get_session
 from app.jobs import get_registry
-from app.models import Bank, GeneratedPage, GenerationJob, User
+from app.models import Bank, GenerationJob, User
 from app.services import generation
 from app.sse import encode_sse, get_bus
 
 router = APIRouter(tags=["generations"])
-
-
-class GeneratedPageOut(BaseModel):
-    page_number: int
-    status: str
-    image_url: str | None
-    error: str | None
 
 
 class GenerationOut(BaseModel):
@@ -39,7 +31,6 @@ class GenerationOut(BaseModel):
     started_at: str | None
     finished_at: str | None
     spec: dict[str, Any] | None
-    pages: list[GeneratedPageOut]
 
 
 class GenerationSummary(BaseModel):
@@ -49,7 +40,6 @@ class GenerationSummary(BaseModel):
     progress_pct: float
     created_at: str
     finished_at: str | None
-    page_count: int
 
 
 async def _ensure_bank_owned(
@@ -80,7 +70,7 @@ async def _load_owned_job(
     return row[0], row[1]
 
 
-def _serialize_job(job: GenerationJob, pages: list[GeneratedPage]) -> GenerationOut:
+def _serialize_job(job: GenerationJob) -> GenerationOut:
     spec = None
     if job.spec_json:
         try:
@@ -98,19 +88,6 @@ def _serialize_job(job: GenerationJob, pages: list[GeneratedPage]) -> Generation
         started_at=job.started_at.isoformat() if job.started_at else None,
         finished_at=job.finished_at.isoformat() if job.finished_at else None,
         spec=spec,
-        pages=[
-            GeneratedPageOut(
-                page_number=p.page_number,
-                status=p.status,
-                image_url=(
-                    f"/api/generations/{job.id}/pages/{p.page_number}/image"
-                    if p.image_path
-                    else None
-                ),
-                error=p.error,
-            )
-            for p in pages
-        ],
     )
 
 
@@ -148,7 +125,6 @@ async def start_generation(
         progress_pct=job.progress_pct,
         created_at=job.created_at.isoformat() if job.created_at else "",
         finished_at=None,
-        page_count=0,
     )
 
 
@@ -166,25 +142,17 @@ async def list_generations(
             .order_by(desc(GenerationJob.created_at))
         )
     ).scalars().all()
-    summaries: list[GenerationSummary] = []
-    for j in rows:
-        pages = (
-            await session.execute(
-                select(GeneratedPage).where(GeneratedPage.job_id == j.id)
-            )
-        ).scalars().all()
-        summaries.append(
-            GenerationSummary(
-                id=j.id,
-                bank_id=j.bank_id,
-                status=j.status,
-                progress_pct=j.progress_pct,
-                created_at=j.created_at.isoformat() if j.created_at else "",
-                finished_at=j.finished_at.isoformat() if j.finished_at else None,
-                page_count=len(pages),
-            )
+    return [
+        GenerationSummary(
+            id=j.id,
+            bank_id=j.bank_id,
+            status=j.status,
+            progress_pct=j.progress_pct,
+            created_at=j.created_at.isoformat() if j.created_at else "",
+            finished_at=j.finished_at.isoformat() if j.finished_at else None,
         )
-    return summaries
+        for j in rows
+    ]
 
 
 @router.get("/api/generations/{job_id}", response_model=GenerationOut)
@@ -194,14 +162,7 @@ async def get_generation(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GenerationOut:
     job, _ = await _load_owned_job(job_id, user, session)
-    pages = (
-        await session.execute(
-            select(GeneratedPage)
-            .where(GeneratedPage.job_id == job.id)
-            .order_by(GeneratedPage.page_number)
-        )
-    ).scalars().all()
-    return _serialize_job(job, pages)
+    return _serialize_job(job)
 
 
 @router.delete("/api/generations/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -215,25 +176,19 @@ async def delete_generation(
     await session.commit()
 
 
-@router.get("/api/generations/{job_id}/pages/{page_number}/image")
-async def get_generation_page_image(
+@router.get("/api/generations/{job_id}/problems/{problem_id}/figure")
+async def get_generation_problem_figure(
     job_id: str,
-    page_number: int,
+    problem_id: int,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FileResponse:
+    """Serve the rendered figure for a single problem."""
     job, _ = await _load_owned_job(job_id, user, session)
-    page = (
-        await session.execute(
-            select(GeneratedPage).where(
-                GeneratedPage.job_id == job.id,
-                GeneratedPage.page_number == page_number,
-            )
-        )
-    ).scalar_one_or_none()
-    if page is None or not page.image_path or not Path(page.image_path).exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "page image not found")
-    return FileResponse(page.image_path, media_type="image/png")
+    path = generation.figure_path(job.id, problem_id)
+    if not path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "figure not found")
+    return FileResponse(path, media_type="image/png")
 
 
 @router.get("/api/generations/{job_id}/events")

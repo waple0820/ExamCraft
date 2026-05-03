@@ -188,6 +188,8 @@ export const zh = {
     liveLayingOut: "题目已就位,正在排版…",
     liveRendering: (done: number, total: number) =>
       `正在生成第 ${done + 1} / ${total} 页`,
+    liveRenderingFigures: (done: number, total: number) =>
+      `已生成配图 ${done} / ${total}`,
     liveFinishing: "正在最后整理…",
     statusQueued: "排队中",
     statusRunning: "进行中",
@@ -205,6 +207,15 @@ export const zh = {
     difficulty: (n: string) => `难度 ${n}/10`,
     points: (n: number) => `${n} 分`,
     empty: "(暂无题目)",
+  },
+  exam: {
+    eyebrow: "试卷",
+    print: "打印",
+    figuresProgress: (done: number, total: number) =>
+      `配图 ${done}/${total}`,
+    figureRendering: "配图生成中…",
+    figureFailed: "配图生成失败",
+    figureRetryHint: "对话里让它重试",
   },
   chat: {
     title: "聊聊看",

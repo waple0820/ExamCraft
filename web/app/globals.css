@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import "katex/dist/katex.min.css";
+
 :root {
   color-scheme: light;
 }
@@ -31,4 +33,39 @@ body::before {
 main {
   position: relative;
   z-index: 1;
+}
+
+/* Print: strip chrome (header, chat, toggles) and present a clean
+ * exam document. The ExamView component carries data-print-area;
+ * everything else is hidden. */
+@media print {
+  body::before {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  [data-no-print] {
+    display: none !important;
+  }
+  [data-print-area] {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .problem-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  @page {
+    size: A4;
+    margin: 1.4cm 1.6cm;
+  }
 }
