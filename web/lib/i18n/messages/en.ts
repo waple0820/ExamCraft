@@ -159,6 +159,11 @@ export const en: Messages = {
     pagePlaceholder: "rendering…",
     pageFailed: "failed",
     pageFailedHint: "chat to retry this page",
+    livePreparing: "AI is drafting questions…",
+    liveLayingOut: "Questions are ready, laying out the pages…",
+    liveRendering: (done: number, total: number) =>
+      `Generating page ${done + 1} / ${total}`,
+    liveFinishing: "Wrapping up…",
     statusQueued: "queued",
     statusRunning: "running",
     statusDone: "done",

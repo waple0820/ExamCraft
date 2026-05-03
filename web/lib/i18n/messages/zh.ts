@@ -154,6 +154,11 @@ export const zh = {
     pagePlaceholder: "渲染中…",
     pageFailed: "失败",
     pageFailedHint: "对话里让它重试这一页",
+    livePreparing: "AI 正在出题…",
+    liveLayingOut: "题目已就位,正在排版…",
+    liveRendering: (done: number, total: number) =>
+      `正在生成第 ${done + 1} / ${total} 页`,
+    liveFinishing: "正在最后整理…",
     statusQueued: "排队中",
     statusRunning: "进行中",
     statusDone: "已就绪",

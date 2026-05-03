@@ -123,6 +123,19 @@ export function GenerationWatch({
     [job.progress_pct],
   );
 
+  const liveStatus = useMemo(() => {
+    if (job.status !== "running" && job.status !== "queued") return null;
+    const total = job.pages.length;
+    const done = job.pages.filter(
+      (p) => p.image_url || p.status === "done",
+    ).length;
+    if (total === 0) {
+      return job.spec ? m.generation.liveLayingOut : m.generation.livePreparing;
+    }
+    if (done >= total) return m.generation.liveFinishing;
+    return m.generation.liveRendering(done, total);
+  }, [job, m]);
+
   const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
   const statusLabels: Record<Generation["status"], string> = {
     queued: m.generation.statusQueued,
@@ -149,11 +162,16 @@ export function GenerationWatch({
           </span>
         </div>
         {job.status !== "done" && job.status !== "failed" ? (
-          <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-ink/5">
-            <div
-              className="h-full bg-violet transition-all duration-700 ease-out"
-              style={{ width: `${pct}%` }}
-            />
+          <div className="mt-4 space-y-2">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-ink/5">
+              <div
+                className="h-full bg-violet transition-all duration-700 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {liveStatus ? (
+              <p className="text-sm text-violet">{liveStatus}</p>
+            ) : null}
           </div>
         ) : null}
         {job.error ? (
