@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getBank } from "@/lib/server";
+import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { SampleList } from "@/components/SampleList";
+import { SampleUploader } from "@/components/SampleUploader";
+import { getBank, getBankAnalysis, listSamples } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +16,11 @@ export default async function BankDetail({
   const { id } = await params;
   const bank = await getBank(id);
   if (!bank) notFound();
+
+  const [samples, analysis] = await Promise.all([
+    listSamples(id),
+    getBankAnalysis(id),
+  ]);
 
   return (
     <div className="space-y-12">
@@ -26,22 +34,37 @@ export default async function BankDetail({
         ) : null}
       </div>
 
-      <section className="rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
-        <h2 className="font-display text-2xl tracking-tight">Sample exams</h2>
-        <p className="mt-2 text-sm text-ink/55">
-          Upload .docx or .pdf files of teachers&apos; sample exams. ExamCraft
-          will analyze each page and learn the bank&apos;s style.
+      <section className="space-y-4 rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-2xl tracking-tight">Sample exams</h2>
+          <span className="text-xs uppercase tracking-wider text-ink/40">
+            {samples.length} uploaded
+          </span>
+        </div>
+        <p className="text-sm text-ink/55">
+          Drop teachers&apos; exam papers here. ExamCraft renders each page,
+          calls a vision model on every page, then aggregates into a bank
+          profile that future generations will use as a style reference.
         </p>
-        <p className="mt-6 text-sm italic text-ink/40">
-          Upload UI lands in M3 — coming next.
-        </p>
+        <SampleUploader bankId={id} />
+        <SampleList bankId={id} initialSamples={samples} />
+      </section>
+
+      <section className="space-y-2 rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-2xl tracking-tight">Bank profile</h2>
+          <span className="text-xs uppercase tracking-wider text-ink/40">
+            aggregated style + topics
+          </span>
+        </div>
+        <AnalysisPanel bankId={id} initial={analysis} />
       </section>
 
       <section className="rounded-2xl border border-ink/10 bg-white/60 p-8 shadow-soft">
         <h2 className="font-display text-2xl tracking-tight">Generate</h2>
         <p className="mt-2 text-sm text-ink/55">
-          Once samples are analyzed, you&apos;ll be able to generate brand-new
-          exams in this bank&apos;s style.
+          Once the bank profile is ready, you&apos;ll be able to generate
+          brand-new exams in this style.
         </p>
         <p className="mt-6 text-sm italic text-ink/40">
           Generation lands in M4.

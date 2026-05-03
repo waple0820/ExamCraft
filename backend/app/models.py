@@ -43,3 +43,43 @@ class Bank(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="banks")
+    samples: Mapped[list[SampleExam]] = relationship(
+        back_populates="bank", cascade="all, delete-orphan", order_by="SampleExam.created_at.desc()"
+    )
+
+
+class SampleExam(Base):
+    __tablename__ = "sample_exams"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    bank_id: Mapped[str] = mapped_column(
+        ForeignKey("banks.id", ondelete="CASCADE"), index=True
+    )
+    original_filename: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(500))
+    page_count: Mapped[int] = mapped_column(default=0)
+
+    # uploaded → extracting → analyzing → done | error
+    status: Mapped[str] = mapped_column(String(16), default="uploaded")
+    error: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    bank: Mapped[Bank] = relationship(back_populates="samples")
+    pages: Mapped[list[SampleExamPage]] = relationship(
+        back_populates="sample", cascade="all, delete-orphan", order_by="SampleExamPage.page_number"
+    )
+
+
+class SampleExamPage(Base):
+    __tablename__ = "sample_exam_pages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    sample_id: Mapped[str] = mapped_column(
+        ForeignKey("sample_exams.id", ondelete="CASCADE"), index=True
+    )
+    page_number: Mapped[int]
+    image_path: Mapped[str] = mapped_column(String(500))
+    vision_json: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+
+    sample: Mapped[SampleExam] = relationship(back_populates="pages")
