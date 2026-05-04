@@ -2,7 +2,7 @@
 
 import { Loader2, Printer, RefreshCcw } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "@/components/I18nProvider";
 import { MathText } from "@/components/MathText";
@@ -73,6 +73,49 @@ export function ExamView({
     return { entries, total };
   }, [spec, m.exam.knowledgeOther]);
 
+  // Track image-loaded state per problem id. We need this so the Print
+  // button doesn't fire while figures are still streaming in (the printed
+  // sheet would have blank squares where images haven't decoded yet).
+  // Cleared whenever the spec changes shape so chat revisions reset us.
+  const [loadedIds, setLoadedIds] = useState<Set<number>>(new Set());
+  const onFigureLoaded = useCallback((problemId: number) => {
+    setLoadedIds((prev) => {
+      if (prev.has(problemId)) return prev;
+      const next = new Set(prev);
+      next.add(problemId);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    // Drop entries whose problem id no longer exists in the spec (e.g.
+    // after a chat revision removed a problem).
+    if (!spec?.sections) {
+      setLoadedIds(new Set());
+      return;
+    }
+    const valid = new Set<number>();
+    for (const s of spec.sections) {
+      for (const p of s.problems ?? []) {
+        if (
+          p.figure?.needed &&
+          (p.figure as Extract<ProblemFigure, { needed: true }>).status ===
+            "done"
+        ) {
+          valid.add(p.id);
+        }
+      }
+    }
+    setLoadedIds((prev) => {
+      const next = new Set<number>();
+      for (const id of prev) if (valid.has(id)) next.add(id);
+      return next;
+    });
+  }, [spec]);
+
+  const figuresPending =
+    figureStats.done > loadedIds.size ? figureStats.done - loadedIds.size : 0;
+  const printDisabled = figuresPending > 0 || figureStats.queued > 0;
+
   if (!spec) {
     return (
       <section>
@@ -116,9 +159,18 @@ export function ExamView({
           <button
             type="button"
             onClick={() => window.print()}
-            className="flex items-center gap-1 text-ink/40 hover:text-violet"
+            disabled={printDisabled}
+            title={
+              printDisabled
+                ? m.exam.printWaiting(figureStats.done, figureStats.total)
+                : m.exam.print
+            }
+            className="flex items-center gap-1 text-ink/40 transition hover:text-violet disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink/40"
           >
-            <Printer className="size-3.5" /> {m.exam.print}
+            <Printer className="size-3.5" />{" "}
+            {printDisabled
+              ? m.exam.printWaiting(figureStats.done, figureStats.total)
+              : m.exam.print}
           </button>
         </div>
       </div>
@@ -185,6 +237,7 @@ export function ExamView({
                       problem={p}
                       jobId={jobId}
                       showAnswer={showAnswers}
+                      onFigureLoaded={onFigureLoaded}
                     />
                   ))}
                 </ol>
@@ -201,10 +254,12 @@ function ProblemCard({
   problem,
   jobId,
   showAnswer,
+  onFigureLoaded,
 }: {
   problem: ExamProblem;
   jobId: string;
   showAnswer: boolean;
+  onFigureLoaded: (problemId: number) => void;
 }) {
   const { messages: m } = useI18n();
   const typeLabel =
@@ -253,7 +308,11 @@ function ProblemCard({
           ) : null}
 
           {problem.figure?.needed ? (
-            <FigureSlot problem={problem} jobId={jobId} />
+            <FigureSlot
+              problem={problem}
+              jobId={jobId}
+              onLoaded={() => onFigureLoaded(problem.id)}
+            />
           ) : null}
 
           {showAnswer ? (
@@ -273,9 +332,11 @@ function ProblemCard({
 function FigureSlot({
   problem,
   jobId,
+  onLoaded,
 }: {
   problem: ExamProblem;
   jobId: string;
+  onLoaded: () => void;
 }) {
   const { messages: m } = useI18n();
   const fig = problem.figure as Extract<ProblemFigure, { needed: true }>;
@@ -303,6 +364,12 @@ function FigureSlot({
             className="object-contain"
             unoptimized
             sizes="(max-width: 768px) 80vw, 320px"
+            // Eager so the browser preloads every figure as the page
+            // mounts; combined with onLoad tracking we know exactly when
+            // it's safe to print.
+            loading="eager"
+            onLoad={onLoaded}
+            onError={onLoaded}
           />
         </div>
       ) : status === "error" ? (

@@ -216,6 +216,8 @@ export const zh = {
   exam: {
     eyebrow: "试卷",
     print: "打印",
+    printWaiting: (loaded: number, total: number) =>
+      `配图加载中 ${loaded}/${total}`,
     figuresProgress: (done: number, total: number) =>
       `配图 ${done}/${total}`,
     figureRendering: "配图生成中…",

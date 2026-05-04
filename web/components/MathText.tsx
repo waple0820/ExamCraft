@@ -40,16 +40,24 @@ function tokenize(src: string): Chunk[] {
   return chunks;
 }
 
-function renderMath(value: string, display: boolean): string {
+type Rendered = { kind: "html"; html: string } | { kind: "fallback"; text: string };
+
+function renderMath(value: string, display: boolean): Rendered {
   try {
-    return katex.renderToString(value, {
-      displayMode: display,
-      throwOnError: false,
-      strict: "ignore",
-      output: "html",
-    });
+    // throwOnError: true so we can fall back to plain text on failure;
+    // KaTeX's default behavior renders unparsable bits in red, which the
+    // user explicitly doesn't want on the exam page.
+    return {
+      kind: "html",
+      html: katex.renderToString(value, {
+        displayMode: display,
+        throwOnError: true,
+        strict: "ignore",
+        output: "html",
+      }),
+    };
   } catch {
-    return display ? `\\[${value}\\]` : `\\(${value})\\)`;
+    return { kind: "fallback", text: value };
   }
 }
 
@@ -70,12 +78,15 @@ export function MathText({
     <span className={className} style={{ whiteSpace: "pre-wrap" }}>
       {chunks.map((c, i) => {
         if (c.kind === "text") return <Fragment key={i}>{c.value}</Fragment>;
-        return (
-          <span
-            key={i}
-            dangerouslySetInnerHTML={{ __html: renderMath(c.value, c.display) }}
-          />
-        );
+        const r = renderMath(c.value, c.display);
+        if (r.kind === "html") {
+          return (
+            <span key={i} dangerouslySetInnerHTML={{ __html: r.html }} />
+          );
+        }
+        // KaTeX couldn't parse — show the raw expression as plain text in
+        // the surrounding color, no red error styling.
+        return <Fragment key={i}>{r.text}</Fragment>;
       })}
     </span>
   ) as ReactNode;
