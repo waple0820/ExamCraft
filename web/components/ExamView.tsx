@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Printer, RefreshCcw } from "lucide-react";
+import { Download, Loader2, Printer, RefreshCcw } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -156,6 +156,11 @@ export function ExamView({
           >
             {showAnswers ? m.spec.hideAnswers : m.spec.showAnswers}
           </button>
+          <DocxLink
+            jobId={jobId}
+            includeAnswers={showAnswers}
+            disabled={figureStats.queued > 0}
+          />
           <button
             type="button"
             onClick={() => window.print()}
@@ -247,6 +252,48 @@ export function ExamView({
         )}
       </article>
     </section>
+  );
+}
+
+function DocxLink({
+  jobId,
+  includeAnswers,
+  disabled,
+}: {
+  jobId: string;
+  includeAnswers: boolean;
+  disabled: boolean;
+}) {
+  const { messages: m } = useI18n();
+  const href = backendUrl(
+    `/api/generations/${jobId}/export/docx?include_answers=${
+      includeAnswers ? "true" : "false"
+    }`,
+  );
+  const label = includeAnswers
+    ? m.exam.exportDocxWithAnswers
+    : m.exam.exportDocx;
+  if (disabled) {
+    return (
+      <span
+        className="flex items-center gap-1 text-ink/40 opacity-40"
+        title={m.exam.exportDocxWaiting}
+      >
+        <Download className="size-3.5" /> {label}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={href}
+      // The browser shows the server-supplied filename from
+      // Content-Disposition. download="" just hints "yes, this is a
+      // download, don't navigate."
+      download=""
+      className="flex items-center gap-1 text-ink/40 transition hover:text-violet"
+    >
+      <Download className="size-3.5" /> {label}
+    </a>
   );
 }
 

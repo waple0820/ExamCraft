@@ -15,7 +15,7 @@ from app.db import get_session
 from app.jobs import get_registry
 from app.models import Bank, GenerationJob, User
 from app.serialize import iso_z, iso_z_opt
-from app.services import generation
+from app.services import docx_export, generation
 from app.sse import encode_sse, get_bus
 
 router = APIRouter(tags=["generations"])
@@ -190,6 +190,51 @@ async def get_generation_problem_figure(
     if not path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "figure not found")
     return FileResponse(path, media_type="image/png")
+
+
+@router.get("/api/generations/{job_id}/export/docx")
+async def export_generation_docx(
+    job_id: str,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    include_answers: bool = False,
+) -> FileResponse:
+    """Render the generation's spec + figures as a Word .docx."""
+    job, _ = await _load_owned_job(job_id, user, session)
+    if not job.spec_json:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "exam content is not ready yet",
+        )
+    try:
+        spec = json.loads(job.spec_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "spec is corrupt",
+        ) from exc
+
+    try:
+        out_path = await docx_export.export_docx(
+            spec, job.id, include_answers=include_answers
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"docx export failed: {exc}",
+        ) from exc
+
+    title = (spec.get("title") or "exam").strip()
+    suffix = "_含答案" if include_answers else ""
+    filename = f"{docx_export._safe_filename(title)}{suffix}.docx"
+    return FileResponse(
+        path=out_path,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        filename=filename,
+    )
 
 
 @router.get("/api/generations/{job_id}/events")

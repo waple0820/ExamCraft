@@ -5,6 +5,8 @@
 #   - LibreOffice (writer + impress + core) so soffice can convert .docx/.doc/
 #     .odt/.rtf samples to PDF
 #   - poppler-utils so pdf2image can rasterize PDFs to PNG via pdftoppm
+#   - pandoc for the "export exam to .docx" feature; converts the spec's
+#     LaTeX math to native Word OMML equations
 #   - Noto CJK fonts so Chinese math papers render correctly during the
 #     soffice → PDF step
 #   - uv for dependency management (matches local dev)
@@ -29,6 +31,7 @@ RUN apt-get update \
         libreoffice-writer \
         libreoffice-impress \
         poppler-utils \
+        pandoc \
         fonts-noto-cjk \
         fonts-noto-cjk-extra \
         fonts-noto-color-emoji \

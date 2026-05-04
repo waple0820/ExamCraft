@@ -223,6 +223,9 @@ export const en: Messages = {
     print: "Print",
     printWaiting: (loaded: number, total: number) =>
       `Loading figures ${loaded}/${total}`,
+    exportDocx: "Export Word",
+    exportDocxWithAnswers: "Export Word (with answers)",
+    exportDocxWaiting: "Wait for figures to render before downloading",
     figuresProgress: (done: number, total: number) =>
       `Figures ${done}/${total}`,
     figureRendering: "Figure rendering…",
