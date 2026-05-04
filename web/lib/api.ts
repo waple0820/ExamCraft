@@ -1,8 +1,14 @@
-export const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+// Client-side base URL for API calls. Empty string = same-origin / relative
+// paths, which lets a tunnel on :3000 (cpolar / ngrok / cloudflared) cover
+// the API too via the next.config.ts rewrite. In a split deploy (Vercel +
+// Fly) point this at the public backend host.
+const RAW = process.env.NEXT_PUBLIC_BACKEND_URL;
+export const BACKEND = RAW === undefined ? "http://localhost:8000" : RAW;
 
-export const backendUrl = (path: string): string =>
-  `${BACKEND}${path.startsWith("/") ? path : `/${path}`}`;
+export const backendUrl = (path: string): string => {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return BACKEND ? `${BACKEND}${suffix}` : suffix;
+};
 
 export type Health = {
   status: string;
