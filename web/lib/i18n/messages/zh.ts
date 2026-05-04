@@ -218,6 +218,9 @@ export const zh = {
     print: "打印",
     printWaiting: (loaded: number, total: number) =>
       `配图加载中 ${loaded}/${total}`,
+    exportDocx: "导出 Word",
+    exportDocxWithAnswers: "导出 Word(含答案)",
+    exportDocxWaiting: "配图生成中,稍候再下载",
     figuresProgress: (done: number, total: number) =>
       `配图 ${done}/${total}`,
     figureRendering: "配图生成中…",
