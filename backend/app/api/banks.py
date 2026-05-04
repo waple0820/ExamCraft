@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.db import get_session
 from app.models import Bank, User
+from app.serialize import iso_z
 
 router = APIRouter(prefix="/api/banks", tags=["banks"])
 
@@ -33,7 +34,7 @@ class BankOut(BaseModel):
             name=b.name,
             description=b.description,
             analysis_status=b.analysis_status,
-            created_at=b.created_at.isoformat() if b.created_at else "",
+            created_at=iso_z(b.created_at),
         )
 
 

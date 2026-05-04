@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { useI18n } from "@/components/I18nProvider";
 import type { GenerationSummary } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 export function GenerationsList({ items }: { items: GenerationSummary[] }) {
   const { messages: m, locale } = useI18n();
@@ -14,7 +15,6 @@ export function GenerationsList({ items }: { items: GenerationSummary[] }) {
     done: { label: m.generate.statusDone, tone: "text-teal" },
     failed: { label: m.generate.statusFailed, tone: "text-red-600" },
   };
-  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
 
   if (items.length === 0) {
     return (
@@ -34,7 +34,7 @@ export function GenerationsList({ items }: { items: GenerationSummary[] }) {
               <div>
                 <p className="text-sm font-medium">
                   {m.generate.historyTitle(
-                    new Date(g.created_at).toLocaleString(dateLocale),
+                    formatDateTime(g.created_at, locale),
                   )}
                 </p>
                 <p className="mt-1 text-xs text-ink/45">

@@ -50,7 +50,11 @@ Reply with ONLY the JSON object."""
 
 
 async def _publish(channel: str, event_name: str, **data: Any) -> None:
-    payload = {"event": event_name, "ts": datetime.utcnow().isoformat(), **data}
+    payload = {
+        "event": event_name,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        **data,
+    }
     await get_bus().publish(channel, payload)
 
 

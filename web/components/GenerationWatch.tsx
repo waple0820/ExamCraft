@@ -11,6 +11,7 @@ import {
   type Generation,
   type ProblemFigure,
 } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 import { ExamView } from "@/components/ExamView";
 import { ReviseChat } from "@/components/ReviseChat";
@@ -154,19 +155,32 @@ export function GenerationWatch({
     return { total, done };
   }, [job.spec]);
 
+  // Step counter: total = 1 (出题/spec) + 1 per needed figure.
+  // currentDone = 1 if spec exists else 0, plus figures already rendered.
+  const stepProgress = useMemo(() => {
+    const specDone = job.spec ? 1 : 0;
+    const total = 1 + figureProgress.total; // unknown until spec arrives, but 1 is the floor
+    const done = specDone + figureProgress.done;
+    return { total, done };
+  }, [job.spec, figureProgress]);
+
   const liveStatus = useMemo(() => {
     if (job.status !== "running" && job.status !== "queued") return null;
-    if (!job.spec) return m.generation.livePreparing;
+    if (!job.spec) {
+      // Total still unknown; just "出题中…"
+      return m.generation.livePreparing;
+    }
     if (figureProgress.total === 0) return m.generation.liveFinishing;
     if (figureProgress.done >= figureProgress.total)
       return m.generation.liveFinishing;
     return m.generation.liveRenderingFigures(
+      stepProgress.done,
+      stepProgress.total,
       figureProgress.done,
       figureProgress.total,
     );
-  }, [job, figureProgress, m]);
+  }, [job, figureProgress, stepProgress, m]);
 
-  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
   const statusLabels: Record<Generation["status"], string> = {
     queued: m.generation.statusQueued,
     running: m.generation.statusRunning,
@@ -186,9 +200,7 @@ export function GenerationWatch({
         <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
           <StatusPill status={job.status} label={statusLabels[job.status]} />
           <span className="text-ink/40">
-            {m.generation.started(
-              new Date(job.created_at).toLocaleString(dateLocale),
-            )}
+            {m.generation.started(formatDateTime(job.created_at, locale))}
           </span>
         </div>
         {job.status !== "done" && job.status !== "failed" ? (

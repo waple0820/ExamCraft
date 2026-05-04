@@ -11,6 +11,7 @@ from app.auth import current_user
 from app.db import get_session
 from app.jobs import get_registry
 from app.models import Bank, ChatMessage, GenerationJob, User
+from app.serialize import iso_z
 from app.services import revision
 
 router = APIRouter(tags=["chat"])
@@ -61,7 +62,7 @@ async def list_messages(
             id=m.id,
             role=m.role,
             content=m.content,
-            created_at=m.created_at.isoformat() if m.created_at else "",
+            created_at=iso_z(m.created_at),
         )
         for m in rows
     ]
@@ -105,5 +106,5 @@ async def post_message(
         id=msg.id,
         role=msg.role,
         content=msg.content,
-        created_at=msg.created_at.isoformat() if msg.created_at else "",
+        created_at=iso_z(msg.created_at),
     )

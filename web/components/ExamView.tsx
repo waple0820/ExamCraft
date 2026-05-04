@@ -58,6 +58,21 @@ export function ExamView({
     return { total, done, error, queued };
   }, [spec]);
 
+  const knowledgeBreakdown = useMemo(() => {
+    if (!spec?.sections) return { entries: [], total: 0 };
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const s of spec.sections) {
+      for (const p of s.problems ?? []) {
+        total += 1;
+        const kp = p.knowledge_point?.trim() || m.exam.knowledgeOther;
+        counts[kp] = (counts[kp] ?? 0) + 1;
+      }
+    }
+    const entries = Object.entries(counts).sort(([, a], [, b]) => b - a);
+    return { entries, total };
+  }, [spec, m.exam.knowledgeOther]);
+
   if (!spec) {
     return (
       <section>
@@ -122,6 +137,25 @@ export function ExamView({
                 <span key={k}>
                   {metaLabels[k] ?? k.replace(/_/g, " ")}:{" "}
                   <span className="text-ink/80">{String(v)}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {knowledgeBreakdown.total > 0 ? (
+            <div
+              data-no-print
+              className="mx-auto max-w-3xl rounded-lg border border-ink/5 bg-white/40 px-4 py-2 text-xs leading-relaxed text-ink/55"
+            >
+              <span className="font-medium text-ink/70">
+                {m.exam.knowledgeBreakdown}
+              </span>
+              {knowledgeBreakdown.entries.map(([kp, n], i) => (
+                <span key={kp}>
+                  {i === 0 ? " " : " · "}
+                  {kp}{" "}
+                  <span className="tabular-nums text-ink/40">
+                    {n}/{knowledgeBreakdown.total}
+                  </span>
                 </span>
               ))}
             </div>

@@ -184,12 +184,17 @@ export const zh = {
     pagePlaceholder: "渲染中…",
     pageFailed: "失败",
     pageFailedHint: "对话里让它重试这一页",
-    livePreparing: "AI 正在出题…",
+    livePreparing: "AI 正在出题…(第 1 步)",
     liveLayingOut: "题目已就位,正在排版…",
     liveRendering: (done: number, total: number) =>
       `正在生成第 ${done + 1} / ${total} 页`,
-    liveRenderingFigures: (done: number, total: number) =>
-      `已生成配图 ${done} / ${total}`,
+    liveRenderingFigures: (
+      stepDone: number,
+      stepTotal: number,
+      figDone: number,
+      figTotal: number,
+    ) =>
+      `已完成 ${stepDone} / ${stepTotal} 步 · 正在生成配图 (${figDone}/${figTotal})`,
     liveFinishing: "正在最后整理…",
     statusQueued: "排队中",
     statusRunning: "进行中",
@@ -216,6 +221,8 @@ export const zh = {
     figureRendering: "配图生成中…",
     figureFailed: "配图生成失败",
     figureRetryHint: "对话里让它重试",
+    knowledgeBreakdown: "考点分布:",
+    knowledgeOther: "其他",
   },
   chat: {
     title: "聊聊看",

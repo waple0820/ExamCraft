@@ -14,6 +14,7 @@ from app.auth import current_user
 from app.db import get_session
 from app.jobs import get_registry
 from app.models import Bank, GenerationJob, User
+from app.serialize import iso_z, iso_z_opt
 from app.services import generation
 from app.sse import encode_sse, get_bus
 
@@ -84,9 +85,9 @@ def _serialize_job(job: GenerationJob) -> GenerationOut:
         progress_pct=job.progress_pct,
         current_step=job.current_step,
         error=job.error,
-        created_at=job.created_at.isoformat() if job.created_at else "",
-        started_at=job.started_at.isoformat() if job.started_at else None,
-        finished_at=job.finished_at.isoformat() if job.finished_at else None,
+        created_at=iso_z(job.created_at),
+        started_at=iso_z_opt(job.started_at),
+        finished_at=iso_z_opt(job.finished_at),
         spec=spec,
     )
 
@@ -123,7 +124,7 @@ async def start_generation(
         bank_id=job.bank_id,
         status=job.status,
         progress_pct=job.progress_pct,
-        created_at=job.created_at.isoformat() if job.created_at else "",
+        created_at=iso_z(job.created_at),
         finished_at=None,
     )
 
@@ -148,8 +149,8 @@ async def list_generations(
             bank_id=j.bank_id,
             status=j.status,
             progress_pct=j.progress_pct,
-            created_at=j.created_at.isoformat() if j.created_at else "",
-            finished_at=j.finished_at.isoformat() if j.finished_at else None,
+            created_at=iso_z(j.created_at),
+            finished_at=iso_z_opt(j.finished_at),
         )
         for j in rows
     ]

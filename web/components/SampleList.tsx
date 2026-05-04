@@ -9,6 +9,7 @@ import { useI18n } from "@/components/I18nProvider";
 import type { Sample, SampleStatus } from "@/lib/api";
 import { backendUrl } from "@/lib/api";
 import { clientDeleteSample } from "@/lib/client";
+import { formatDateTime } from "@/lib/format";
 
 const IN_FLIGHT: SampleStatus[] = ["uploaded", "extracting", "analyzing"];
 
@@ -101,8 +102,6 @@ export function SampleList({
     },
   };
 
-  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
-
   if (samples.length === 0) {
     return (
       <p className="mt-4 text-sm italic text-ink/40">{m.sampleList.empty}</p>
@@ -141,9 +140,7 @@ export function SampleList({
                   {s.page_count > 0 ? (
                     <span>· {m.sampleList.pageCount(s.page_count)}</span>
                   ) : null}
-                  <span>
-                    · {new Date(s.created_at).toLocaleString(dateLocale)}
-                  </span>
+                  <span>· {formatDateTime(s.created_at, locale)}</span>
                 </div>
                 {s.error ? (
                   <p className="mt-1 truncate text-xs text-red-600">
