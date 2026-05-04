@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 
 import {
   BACKEND,
-  backendUrl,
   type Bank,
   type BankAnalysis,
   type ChatMessage,
@@ -14,6 +13,18 @@ import {
 } from "@/lib/api";
 
 const SESSION_COOKIE = "examcraft_session";
+
+// Server-side fetch needs an absolute URL — Node's fetch doesn't resolve
+// relative paths. We use BACKEND_INTERNAL_URL for SSR even when the
+// browser-facing BACKEND is "" (relative). That way one process talks to
+// the backend over the loopback while the browser goes through the tunnel.
+const INTERNAL_BACKEND =
+  process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
+
+function internalUrl(path: string): string {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${INTERNAL_BACKEND}${suffix}`;
+}
 
 async function authHeader(): Promise<HeadersInit> {
   const jar = await cookies();
@@ -29,7 +40,7 @@ export async function serverFetch(
     ...(init.headers as Record<string, string> | undefined),
     ...(await authHeader()),
   };
-  return fetch(backendUrl(path), {
+  return fetch(internalUrl(path), {
     ...init,
     headers,
     cache: "no-store",
