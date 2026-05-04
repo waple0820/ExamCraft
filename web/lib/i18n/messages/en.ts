@@ -221,6 +221,8 @@ export const en: Messages = {
   exam: {
     eyebrow: "Exam",
     print: "Print",
+    printWaiting: (loaded: number, total: number) =>
+      `Loading figures ${loaded}/${total}`,
     figuresProgress: (done: number, total: number) =>
       `Figures ${done}/${total}`,
     figureRendering: "Figure rendering…",
