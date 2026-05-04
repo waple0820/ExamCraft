@@ -27,12 +27,16 @@ def _serializer() -> URLSafeTimedSerializer:
 def issue_session_cookie(response: Response, user_id: str) -> None:
     settings = get_settings()
     token = _serializer().dumps({"uid": user_id})
+    # Auto-detect: behind HTTPS we set Secure; over HTTP localhost dev we don't,
+    # otherwise the cookie wouldn't make it back. The web origin is set via
+    # EXAMCRAFT_WEB_ORIGIN — https in production, http on the laptop.
+    secure = settings.web_origin.startswith("https://")
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         max_age=settings.session_max_age_days * 86400,
         httponly=True,
-        secure=False,  # localhost dev; flip when behind https
+        secure=secure,
         samesite="lax",
         path="/",
     )

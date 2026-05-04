@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { CreateBankCard } from "@/components/CreateBankCard";
+import { formatDate } from "@/lib/format";
 import { getMessages } from "@/lib/i18n/server";
 import { listBanks } from "@/lib/server";
 
@@ -19,7 +20,6 @@ export default async function Dashboard() {
     error: { label: m.dashboard.statusError, tone: "text-red-600" },
   };
 
-  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
 
   return (
     <div className="space-y-12">
@@ -66,9 +66,7 @@ export default async function Dashboard() {
                 </p>
               )}
               <p className="mt-6 text-xs uppercase tracking-wider text-ink/35">
-                {m.dashboard.createdAt(
-                  new Date(b.created_at).toLocaleDateString(dateLocale),
-                )}
+                {m.dashboard.createdAt(formatDate(b.created_at, locale))}
               </p>
             </Link>
           );

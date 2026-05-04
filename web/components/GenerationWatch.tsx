@@ -4,11 +4,41 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "@/components/I18nProvider";
-import { backendUrl, type ChatMessage, type Generation } from "@/lib/api";
+import {
+  backendUrl,
+  type ChatMessage,
+  type ExamSpec,
+  type Generation,
+  type ProblemFigure,
+} from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
-import { PageGallery } from "@/components/PageGallery";
+import { ExamView } from "@/components/ExamView";
 import { ReviseChat } from "@/components/ReviseChat";
-import { SpecViewer } from "@/components/SpecViewer";
+
+function applyFigureUpdate(
+  spec: ExamSpec | null,
+  problemId: number,
+  patch: Partial<Extract<ProblemFigure, { needed: true }>>,
+): ExamSpec | null {
+  if (!spec?.sections) return spec;
+  let touched = false;
+  const sections = spec.sections.map((section) => {
+    if (!section.problems) return section;
+    const problems = section.problems.map((p) => {
+      if (p.id !== problemId) return p;
+      const fig =
+        p.figure && (p.figure as { needed?: boolean }).needed
+          ? (p.figure as Extract<ProblemFigure, { needed: true }>)
+          : null;
+      if (!fig) return p;
+      touched = true;
+      return { ...p, figure: { ...fig, ...patch } };
+    });
+    return { ...section, problems };
+  });
+  return touched ? { ...spec, sections } : spec;
+}
 
 export function GenerationWatch({
   initial,
@@ -22,10 +52,8 @@ export function GenerationWatch({
   const [job, setJob] = useState<Generation>(initial);
   const [chat, setChat] = useState<ChatMessage[]>(initialChat);
 
-  // Subscribe to SSE while the job is in flight. We deliberately do NOT
-  // expose internal step events to the user — the progress bar, page
-  // gallery and spec viewer give plenty of visible feedback without
-  // leaking generation-pipeline internals.
+  // Subscribe to SSE while the job is in flight. We don't surface the
+  // internal pipeline names — progress comes from spec + figure events.
   useEffect(() => {
     if (job.status === "done" || job.status === "failed") return;
     const url = backendUrl(`/api/generations/${job.id}/events`);
@@ -40,49 +68,36 @@ export function GenerationWatch({
       }
     });
 
-    es.addEventListener("page_ready", (ev) => {
+    es.addEventListener("figure_ready", (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent).data);
-        setJob((j) => {
-          const idx = j.pages.findIndex((p) => p.page_number === data.page);
-          const updated = {
-            page_number: data.page,
-            status: "done" as const,
-            image_url: data.image_url,
+        setJob((j) => ({
+          ...j,
+          spec: applyFigureUpdate(j.spec, data.problem_id, {
+            status: "done",
+            image_url: `${data.image_url}?t=${Date.now()}`,
             error: null,
-          };
-          const pages =
-            idx >= 0
-              ? j.pages.map((p, i) => (i === idx ? updated : p))
-              : [...j.pages, updated].sort(
-                  (a, b) => a.page_number - b.page_number,
-                );
-          return { ...j, pages, progress_pct: data.done / data.total };
-        });
+          }),
+          progress_pct:
+            typeof data.done === "number" && typeof data.total === "number"
+              ? Math.min(1, 0.3 + 0.65 * (data.done / Math.max(1, data.total)))
+              : j.progress_pct,
+        }));
       } catch {
         /* ignore */
       }
     });
 
-    es.addEventListener("page_error", (ev) => {
+    es.addEventListener("figure_error", (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent).data);
-        setJob((j) => {
-          const idx = j.pages.findIndex((p) => p.page_number === data.page);
-          const updated = {
-            page_number: data.page,
-            status: "error" as const,
-            image_url: null,
+        setJob((j) => ({
+          ...j,
+          spec: applyFigureUpdate(j.spec, data.problem_id, {
+            status: "error",
             error: data.message ?? "render failed",
-          };
-          const pages =
-            idx >= 0
-              ? j.pages.map((p, i) => (i === idx ? updated : p))
-              : [...j.pages, updated].sort(
-                  (a, b) => a.page_number - b.page_number,
-                );
-          return { ...j, pages };
-        });
+          }),
+        }));
       } catch {
         /* ignore */
       }
@@ -123,20 +138,49 @@ export function GenerationWatch({
     [job.progress_pct],
   );
 
+  const figureProgress = useMemo(() => {
+    let total = 0;
+    let done = 0;
+    for (const s of job.spec?.sections ?? []) {
+      for (const p of s.problems ?? []) {
+        const fig = p.figure;
+        if (!fig?.needed) continue;
+        total += 1;
+        if (
+          (fig as Extract<ProblemFigure, { needed: true }>).status === "done"
+        )
+          done += 1;
+      }
+    }
+    return { total, done };
+  }, [job.spec]);
+
+  // Step counter: total = 1 (出题/spec) + 1 per needed figure.
+  // currentDone = 1 if spec exists else 0, plus figures already rendered.
+  const stepProgress = useMemo(() => {
+    const specDone = job.spec ? 1 : 0;
+    const total = 1 + figureProgress.total; // unknown until spec arrives, but 1 is the floor
+    const done = specDone + figureProgress.done;
+    return { total, done };
+  }, [job.spec, figureProgress]);
+
   const liveStatus = useMemo(() => {
     if (job.status !== "running" && job.status !== "queued") return null;
-    const total = job.pages.length;
-    const done = job.pages.filter(
-      (p) => p.image_url || p.status === "done",
-    ).length;
-    if (total === 0) {
-      return job.spec ? m.generation.liveLayingOut : m.generation.livePreparing;
+    if (!job.spec) {
+      // Total still unknown; just "出题中…"
+      return m.generation.livePreparing;
     }
-    if (done >= total) return m.generation.liveFinishing;
-    return m.generation.liveRendering(done, total);
-  }, [job, m]);
+    if (figureProgress.total === 0) return m.generation.liveFinishing;
+    if (figureProgress.done >= figureProgress.total)
+      return m.generation.liveFinishing;
+    return m.generation.liveRenderingFigures(
+      stepProgress.done,
+      stepProgress.total,
+      figureProgress.done,
+      figureProgress.total,
+    );
+  }, [job, figureProgress, stepProgress, m]);
 
-  const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
   const statusLabels: Record<Generation["status"], string> = {
     queued: m.generation.statusQueued,
     running: m.generation.statusRunning,
@@ -146,7 +190,7 @@ export function GenerationWatch({
 
   return (
     <div className="space-y-12">
-      <header>
+      <header data-no-print>
         <p className="text-xs uppercase tracking-[0.18em] text-ink/45">
           {m.generation.eyebrow}
         </p>
@@ -156,9 +200,7 @@ export function GenerationWatch({
         <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
           <StatusPill status={job.status} label={statusLabels[job.status]} />
           <span className="text-ink/40">
-            {m.generation.started(
-              new Date(job.created_at).toLocaleString(dateLocale),
-            )}
+            {m.generation.started(formatDateTime(job.created_at, locale))}
           </span>
         </div>
         {job.status !== "done" && job.status !== "failed" ? (
@@ -181,15 +223,15 @@ export function GenerationWatch({
         ) : null}
       </header>
 
-      <PageGallery pages={job.pages} />
+      <ExamView spec={job.spec ?? null} jobId={job.id} />
 
-      <SpecViewer spec={job.spec ?? null} />
-
-      <ReviseChat
-        jobId={job.id}
-        initialMessages={chat}
-        jobStatus={job.status}
-      />
+      <div data-no-print>
+        <ReviseChat
+          jobId={job.id}
+          initialMessages={chat}
+          jobStatus={job.status}
+        />
+      </div>
     </div>
   );
 }

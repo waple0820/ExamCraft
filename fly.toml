@@ -1,0 +1,56 @@
+# Fly.io app config for the ExamCraft backend.
+#
+# Bring-up steps (run from the repo root):
+#   fly auth login
+#   fly apps create examcraft-backend           # pick a unique name
+#   fly volumes create examcraft_data --region hkg --size 5
+#   fly secrets set OPENAI_API_KEY=sk-...      \
+#                   EXAMCRAFT_SESSION_SECRET=$(python -c 'import secrets;print(secrets.token_urlsafe(32))') \
+#                   EXAMCRAFT_WEB_ORIGIN=https://examcraft.example.com \
+#                   IMAGE_API_KEY=sk-...        # same OpenAI key works
+#   fly deploy
+#
+# DEPLOYMENT.md has the full walkthrough.
+
+app = "examcraft-backend"
+primary_region = "hkg"               # closest to mainland-CN family users
+kill_signal = "SIGINT"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  EXAMCRAFT_DATA_DIR = "/data"
+  EXAMCRAFT_HOST = "0.0.0.0"
+  EXAMCRAFT_PORT = "8000"
+  EXAMCRAFT_MODEL = "gpt-5"
+  IMAGE_MODEL = "gpt-image-1"
+  OPENAI_BASE_URL = "https://api.openai.com/v1"
+  IMAGE_API_BASE = "https://api.openai.com"
+
+[[mounts]]
+  source = "examcraft_data"
+  destination = "/data"
+  initial_size = "5gb"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"        # idle-stop to save money — restarts on first request
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024                   # LibreOffice idle is ~250 MB; 1 GB gives headroom
+  size = "shared-cpu-1x"

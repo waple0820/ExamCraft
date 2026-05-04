@@ -189,10 +189,17 @@ export const en: Messages = {
     pagePlaceholder: "rendering…",
     pageFailed: "failed",
     pageFailedHint: "chat to retry this page",
-    livePreparing: "AI is drafting questions…",
+    livePreparing: "AI is drafting questions… (step 1)",
     liveLayingOut: "Questions are ready, laying out the pages…",
     liveRendering: (done: number, total: number) =>
       `Generating page ${done + 1} / ${total}`,
+    liveRenderingFigures: (
+      stepDone: number,
+      stepTotal: number,
+      figDone: number,
+      figTotal: number,
+    ) =>
+      `Step ${stepDone} / ${stepTotal} · rendering figures (${figDone}/${figTotal})`,
     liveFinishing: "Wrapping up…",
     statusQueued: "queued",
     statusRunning: "running",
@@ -210,6 +217,17 @@ export const en: Messages = {
     difficulty: (n: string) => `difficulty ${n}/10`,
     points: (n: number) => `${n} pts`,
     empty: "(no questions)",
+  },
+  exam: {
+    eyebrow: "Exam",
+    print: "Print",
+    figuresProgress: (done: number, total: number) =>
+      `Figures ${done}/${total}`,
+    figureRendering: "Figure rendering…",
+    figureFailed: "Figure failed",
+    figureRetryHint: "Chat to retry",
+    knowledgeBreakdown: "Topics:",
+    knowledgeOther: "Other",
   },
   chat: {
     title: "Talk it over",

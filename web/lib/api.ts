@@ -1,8 +1,14 @@
-export const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+// Client-side base URL for API calls. Empty string = same-origin / relative
+// paths, which lets a tunnel on :3000 (cpolar / ngrok / cloudflared) cover
+// the API too via the next.config.ts rewrite. In a split deploy (Vercel +
+// Fly) point this at the public backend host.
+const RAW = process.env.NEXT_PUBLIC_BACKEND_URL;
+export const BACKEND = RAW === undefined ? "http://localhost:8000" : RAW;
 
-export const backendUrl = (path: string): string =>
-  `${BACKEND}${path.startsWith("/") ? path : `/${path}`}`;
+export const backendUrl = (path: string): string => {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return BACKEND ? `${BACKEND}${suffix}` : suffix;
+};
 
 export type Health = {
   status: string;
@@ -57,11 +63,28 @@ export type BankAnalysis = {
 
 export type GenerationStatus = "queued" | "running" | "done" | "failed";
 
-export type GeneratedPage = {
-  page_number: number;
-  status: "queued" | "done" | "error";
-  image_url: string | null;
-  error: string | null;
+export type FigureStatus = "queued" | "done" | "error";
+
+export type ProblemFigure =
+  | { needed: false; description?: string }
+  | {
+      needed: true;
+      description: string;
+      status?: FigureStatus;
+      error?: string | null;
+      image_url?: string | null;
+    };
+
+export type ExamProblem = {
+  id: number;
+  type: string;
+  content: string;
+  choices?: string[];
+  answer: string;
+  knowledge_point?: string;
+  difficulty?: number;
+  points?: number;
+  figure?: ProblemFigure;
 };
 
 export type ExamSpec = {
@@ -70,16 +93,7 @@ export type ExamSpec = {
   sections?: Array<{
     name?: string;
     instructions?: string;
-    problems?: Array<{
-      id: number;
-      type: string;
-      content: string;
-      choices?: string[];
-      answer: string;
-      knowledge_point?: string;
-      difficulty?: number;
-      points?: number;
-    }>;
+    problems?: ExamProblem[];
   }>;
 };
 
@@ -94,7 +108,6 @@ export type Generation = {
   started_at: string | null;
   finished_at: string | null;
   spec: ExamSpec | null;
-  pages: GeneratedPage[];
 };
 
 export type GenerationSummary = {
@@ -104,7 +117,6 @@ export type GenerationSummary = {
   progress_pct: number;
   created_at: string;
   finished_at: string | null;
-  page_count: number;
 };
 
 export type ChatMessage = {

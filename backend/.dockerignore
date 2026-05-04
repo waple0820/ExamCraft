@@ -1,0 +1,10 @@
+# Keep the build context small.
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+data
+.env
+.env.local

@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
+
+import { I18nProvider } from "@/components/I18nProvider";
+import { getLocale } from "@/lib/i18n/server";
+
 import "./globals.css";
 
 const inter = Inter({
@@ -20,15 +24,26 @@ export const metadata: Metadata = {
   description: "Personal AI-generated exams in your teacher's style.",
 };
 
-export default function RootLayout({
+// The root layout reads the examcraft_locale cookie via getLocale() so it
+// can hand the client-side <I18nProvider> the right dictionary. Without
+// force-dynamic Next 15 was prerendering /login with the default locale
+// and the toggle had no effect on a refresh.
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
+  const htmlLang = locale === "zh" ? "zh-CN" : "en";
+
   return (
-    <html lang="zh-CN" className={`${inter.variable} ${fraunces.variable}`}>
+    <html lang={htmlLang} className={`${inter.variable} ${fraunces.variable}`}>
       <body className="font-sans">
-        <main className="min-h-screen">{children}</main>
+        <I18nProvider locale={locale}>
+          <main className="min-h-screen">{children}</main>
+        </I18nProvider>
       </body>
     </html>
   );

@@ -8,21 +8,27 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.db import _ensure
-from app.models import Bank, ChatMessage, GeneratedPage, GenerationJob
+from app.models import Bank, ChatMessage, GenerationJob
 from app.services import image_gen, llm
 from app.services.generation import (
-    PAGE_LAYOUT_PROMPT,
-    PAGE_LAYOUT_SYSTEM,
+    _attach_figure_status,
+    _figure_prompt,
+    _persist_spec,
     _set_status,
-    _summarize_spec_for_layout,
+    figure_path,
+    index_figures_in_spec,
 )
 from app.sse import get_bus
 
 logger = logging.getLogger("examcraft.revision")
 
-REVISE_SYSTEM = """You are an editor revising a structured exam SPEC based on a parent's feedback. Apply the smallest reasonable change that satisfies the request, keep the same overall shape (sections, total points), keep all answers correct, and reply with the ENTIRE updated spec each time (no diffs)."""
+REVISE_SYSTEM = """You are an editor revising a structured exam SPEC based on a parent's feedback. Apply the smallest reasonable change that satisfies the request, keep the same overall shape (sections, total points), keep all answers correct, and reply with the ENTIRE updated spec each time (no diffs).
+
+The spec format is unchanged from the original generation: each problem has id / type / content / choices / answer / knowledge_point / difficulty / points / figure {needed, description}. When you change a problem that has or needs a figure, also update its figure object accordingly:
+- If the new problem still needs a figure of the same shape, keep the description as close as possible.
+- If the figure changes, write a new English description following the same rules (clean line drawing, white background, short Latin labels only).
+- If the new problem no longer needs a figure, set "figure": {"needed": false, "description": ""}."""
 
 REVISE_PROMPT = """Current exam spec (JSON):
 {spec}
@@ -36,7 +42,7 @@ Parent's latest message:
 Return JSON with this shape:
 
 {{
-  "updated_spec": <the full revised spec, same shape as the input>,
+  "updated_spec": <the full revised spec, same shape as the input — including the figure objects on each problem>,
   "reply_text": "<one or two sentences in the parent's language explaining what you changed>"
 }}
 
@@ -44,7 +50,11 @@ Reply with ONLY the JSON object."""
 
 
 async def _publish(channel: str, event_name: str, **data: Any) -> None:
-    payload = {"event": event_name, "ts": datetime.utcnow().isoformat(), **data}
+    payload = {
+        "event": event_name,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        **data,
+    }
     await get_bus().publish(channel, payload)
 
 
@@ -58,32 +68,9 @@ def _format_history(messages: list[ChatMessage]) -> str:
     return "\n".join(lines)
 
 
-async def _replan_layout(
-    bank: Bank, spec: dict[str, Any]
-) -> dict[str, Any]:
-    bank_profile = json.loads(bank.analysis_json or "{}")
-    return await llm.chat_json(
-        [
-            {"role": "system", "content": PAGE_LAYOUT_SYSTEM},
-            {
-                "role": "user",
-                "content": PAGE_LAYOUT_PROMPT.format(
-                    style=json.dumps(
-                        bank_profile.get("style_profile", {}),
-                        ensure_ascii=False,
-                        indent=2,
-                    ),
-                    spec_summary=_summarize_spec_for_layout(spec),
-                ),
-            },
-        ],
-        tag="revise.layout",
-    )
-
-
 async def apply_revision(job_id: str, user_message_id: str) -> None:
-    """Background worker: take the user's message, revise the spec, re-render affected pages."""
-    settings = get_settings()
+    """Background worker: rewrite the spec from the user's message, then
+    re-render only the figures whose description actually changed."""
     _, sm = _ensure()
     channel = job_id
 
@@ -111,9 +98,11 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         return
 
     try:
-        await _publish(channel, "step", step="revise", message="Revising the spec…")
+        await _publish(channel, "step", step="revise", message="Revising the exam…")
 
-        spec = json.loads(job.spec_json)
+        old_spec = json.loads(job.spec_json)
+        old_figures = index_figures_in_spec(old_spec)
+
         history_for_prompt = [m for m in history if m.id != user_msg.id]
         result = await llm.chat_json(
             [
@@ -121,7 +110,7 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
                 {
                     "role": "user",
                     "content": REVISE_PROMPT.format(
-                        spec=json.dumps(spec, ensure_ascii=False, indent=2),
+                        spec=json.dumps(old_spec, ensure_ascii=False, indent=2),
                         history=_format_history(history_for_prompt),
                         user_message=user_msg.content,
                     ),
@@ -133,14 +122,12 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
         updated_spec = result.get("updated_spec") or {}
         reply_text = result.get("reply_text") or "Updated."
 
-        # Persist new spec + assistant reply.
         async with sm() as session:
             job_row = (
                 await session.execute(select(GenerationJob).where(GenerationJob.id == job_id))
             ).scalar_one_or_none()
             if job_row is None:
                 return
-            job_row.spec_json = json.dumps(updated_spec, ensure_ascii=False)
             assistant = ChatMessage(
                 job_id=job_id,
                 role="assistant",
@@ -150,197 +137,105 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
             session.add(assistant)
             await session.commit()
 
-        spec_path = settings.jobs_dir / job_id / "spec.json"
-        spec_path.parent.mkdir(parents=True, exist_ok=True)
-        spec_path.write_text(json.dumps(updated_spec, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Diff figures by description string. Three cases:
+        #   - changed: same problem id, description text differs -> regenerate
+        #   - new: problem id only in new spec -> generate
+        #   - removed: problem id only in old spec -> delete on disk
+        new_figures = index_figures_in_spec(updated_spec)
+        to_render: list[tuple[int, str]] = []
+        for pid, desc in new_figures.items():
+            if old_figures.get(pid) != desc:
+                to_render.append((pid, desc))
+        removed = [pid for pid in old_figures if pid not in new_figures]
+
+        # Carry over the existing figure files for unchanged problems by
+        # initializing figure_status from disk.
+        figure_status: dict[int, dict[str, Any]] = {}
+        for pid in new_figures:
+            if (pid, new_figures[pid]) in to_render:
+                figure_status[pid] = {"status": "queued"}
+            elif figure_path(job_id, pid).exists():
+                figure_status[pid] = {"status": "done"}
+            else:
+                # Existed in spec but file is missing — re-render to be safe.
+                figure_status[pid] = {"status": "queued"}
+                if (pid, new_figures[pid]) not in to_render:
+                    to_render.append((pid, new_figures[pid]))
+
+        _attach_figure_status(updated_spec, job_id, figure_status)
+        await _persist_spec(job_id, updated_spec)
         await _publish(channel, "spec_ready", spec=updated_spec)
         await _publish(channel, "chat", role="assistant", message=reply_text)
 
-        # Re-plan layout, then figure out which pages actually need re-rendering.
-        # The layout planner produces slightly different prompt text each call
-        # even when the underlying content is identical, so naively diffing
-        # prompt strings would re-render everything. Instead diff the *set of
-        # problem ids per page* — that's the real semantic change.
-        new_layout = await _replan_layout(bank, updated_spec)
-        new_pages = new_layout.get("pages") or []
-        if not new_pages:
-            await _set_status(job_id, status="done", current_step="done")
-            await _publish(channel, "done", message="spec updated; no page changes")
+        # Clean up removed figures' files.
+        for pid in removed:
+            try:
+                figure_path(job_id, pid).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        if not to_render:
+            await _set_status(job_id, status="done", progress_pct=1.0, current_step="done")
+            await _publish(channel, "done", message="exam updated · no figures changed")
             return
 
-        previous_layout_path = settings.jobs_dir / job_id / "prompts.json"
-        old_problem_ids_by_page: dict[int, frozenset[int]] = {}
-        if previous_layout_path.exists():
-            try:
-                prev = json.loads(previous_layout_path.read_text(encoding="utf-8"))
-                for entry in prev.get("pages") or []:
-                    n = int(entry.get("page_number") or 0)
-                    ids = entry.get("problem_ids") or []
-                    if n > 0:
-                        old_problem_ids_by_page[n] = frozenset(int(i) for i in ids)
-            except (json.JSONDecodeError, ValueError, TypeError):
-                old_problem_ids_by_page = {}
-
-        old_prompts: dict[int, str] = {}
-        async with sm() as session:
-            old_rows = (
-                await session.execute(
-                    select(GeneratedPage)
-                    .where(GeneratedPage.job_id == job_id)
-                    .order_by(GeneratedPage.page_number)
-                )
-            ).scalars().all()
-            for r in old_rows:
-                old_prompts[r.page_number] = r.prompt or ""
-
-        new_prompts: dict[int, str] = {}
-        new_problem_ids_by_page: dict[int, frozenset[int]] = {}
-        for entry in new_pages:
-            n = int(entry.get("page_number") or 0)
-            if n <= 0:
-                continue
-            new_prompts[n] = str(entry.get("prompt") or "")
-            ids = entry.get("problem_ids") or []
-            try:
-                new_problem_ids_by_page[n] = frozenset(int(i) for i in ids)
-            except (TypeError, ValueError):
-                new_problem_ids_by_page[n] = frozenset()
-
-        # Persist the new layout for the next revision's diff.
-        previous_layout_path.parent.mkdir(parents=True, exist_ok=True)
-        previous_layout_path.write_text(
-            json.dumps(new_layout, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
-        # A page needs re-rendering if it's new, missing from the old layout,
-        # or its set of problem_ids changed. Pages with the same problem_ids
-        # are kept as-is — the existing image still represents them.
-        changed_pages: list[int] = []
-        for n in sorted(new_prompts):
-            old_ids = old_problem_ids_by_page.get(n)
-            new_ids = new_problem_ids_by_page.get(n, frozenset())
-            if old_ids is None or old_ids != new_ids or n not in old_prompts:
-                changed_pages.append(n)
-        removed_pages = [n for n in old_prompts if n not in new_prompts]
-
-        if not changed_pages and not removed_pages:
-            await _set_status(job_id, status="done", current_step="done")
-            await _publish(channel, "done", message="spec tweaked; no visible page changes")
-            return
-
+        total = len(to_render)
         await _publish(
             channel,
             "step",
-            step="render",
-            message=f"Re-rendering {len(changed_pages)} page(s)…",
-            pages=changed_pages,
+            step="figures",
+            message=f"Re-rendering {total} figure(s)…",
+            count=total,
         )
 
-        async with sm() as session:
-            # Drop removed pages.
-            if removed_pages:
-                rows = (
-                    await session.execute(
-                        select(GeneratedPage).where(
-                            GeneratedPage.job_id == job_id,
-                            GeneratedPage.page_number.in_(removed_pages),
-                        )
-                    )
-                ).scalars().all()
-                for r in rows:
-                    await session.delete(r)
-            # Upsert / mark queued for changed pages.
-            for n in changed_pages:
-                row = (
-                    await session.execute(
-                        select(GeneratedPage).where(
-                            GeneratedPage.job_id == job_id,
-                            GeneratedPage.page_number == n,
-                        )
-                    )
-                ).scalar_one_or_none()
-                if row is None:
-                    row = GeneratedPage(
-                        job_id=job_id,
-                        page_number=n,
-                        prompt=new_prompts[n],
-                        status="queued",
-                    )
-                    session.add(row)
-                else:
-                    row.prompt = new_prompts[n]
-                    row.status = "queued"
-                    row.error = None
-                    row.image_path = None
-            await session.commit()
-
-        # Render the changed pages — concurrently, with the same shared
-        # semaphore in image_gen, so wall-clock matches the generate path.
-        job_dir = settings.jobs_dir / job_id
+        sem = asyncio.Semaphore(4)
         completed = 0
         failed = 0
 
-        async def _render_one(page_number: int) -> None:
+        async def _one(problem_id: int, description: str) -> None:
             nonlocal completed, failed
-            try:
-                path = await image_gen.generate_one(
-                    new_prompts[page_number], job_dir / f"page_{page_number:03d}.png"
-                )
-            except Exception as exc:  # noqa: BLE001
-                failed += 1
-                logger.exception("revise: page %d render failed", page_number)
-                async with sm() as s:
-                    row = (
-                        await s.execute(
-                            select(GeneratedPage).where(
-                                GeneratedPage.job_id == job_id,
-                                GeneratedPage.page_number == page_number,
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        row.status = "error"
-                        row.error = f"{type(exc).__name__}: {exc}"[:500]
-                        await s.commit()
-                await _publish(
-                    channel,
-                    "page_error",
-                    page=page_number,
-                    message=f"{type(exc).__name__}: {exc}"[:200],
-                    done=completed,
-                    failed=failed,
-                    total=len(changed_pages),
-                )
-                return
-            completed += 1
-            async with sm() as s:
-                row = (
-                    await s.execute(
-                        select(GeneratedPage).where(
-                            GeneratedPage.job_id == job_id,
-                            GeneratedPage.page_number == page_number,
-                        )
+            out_path = figure_path(job_id, problem_id)
+            async with sem:
+                try:
+                    await image_gen.generate_one(_figure_prompt(description), out_path)
+                    figure_status[problem_id] = {"status": "done"}
+                    completed += 1
+                    _attach_figure_status(updated_spec, job_id, figure_status)
+                    await _persist_spec(job_id, updated_spec)
+                    await _publish(
+                        channel,
+                        "figure_ready",
+                        problem_id=problem_id,
+                        image_url=f"/api/generations/{job_id}/problems/{problem_id}/figure",
+                        done=completed,
+                        total=total,
                     )
-                ).scalar_one_or_none()
-                if row is not None:
-                    row.image_path = str(path)
-                    row.status = "done"
-                    row.error = None
-                    await s.commit()
-            await _publish(
-                channel,
-                "page_ready",
-                page=page_number,
-                image_url=f"/api/generations/{job_id}/pages/{page_number}/image",
-                done=completed,
-                total=len(changed_pages),
-            )
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    logger.exception(
+                        "revise: figure %d render failed", problem_id
+                    )
+                    figure_status[problem_id] = {
+                        "status": "error",
+                        "error": f"{type(exc).__name__}: {exc}"[:500],
+                    }
+                    _attach_figure_status(updated_spec, job_id, figure_status)
+                    await _persist_spec(job_id, updated_spec)
+                    await _publish(
+                        channel,
+                        "figure_error",
+                        problem_id=problem_id,
+                        message=f"{type(exc).__name__}: {exc}"[:200],
+                        done=completed,
+                        failed=failed,
+                        total=total,
+                    )
 
-        await asyncio.gather(*(_render_one(n) for n in changed_pages))
+        await asyncio.gather(*(_one(pid, desc) for pid, desc in to_render))
 
         if failed and not completed:
             raise RuntimeError(
-                f"all {len(changed_pages)} re-renders failed — see per-page errors"
+                f"all {total} re-renders failed — see per-figure errors"
             )
 
         await _set_status(
@@ -350,14 +245,14 @@ async def apply_revision(job_id: str, user_message_id: str) -> None:
             current_step=(
                 "done"
                 if not failed
-                else f"done with {failed} failed page(s) — chat to retry"
+                else f"done · {failed} figure(s) failed — chat to retry"
             ),
         )
         await _publish(
             channel,
             "done",
             message=(
-                f"revision complete · {completed}/{len(changed_pages)} re-rendered"
+                f"revision complete · {completed}/{total} re-rendered"
                 + (f", {failed} failed" if failed else "")
             ),
         )

@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.jobs import get_registry
 from app.models import Bank, SampleExam, SampleExamPage, User
+from app.serialize import iso_z
 from app.services import docrender, ingestion
 
 router = APIRouter(tags=["samples"])
@@ -47,7 +48,7 @@ class SampleOut(BaseModel):
             page_count=s.page_count,
             status=s.status,
             error=s.error,
-            created_at=s.created_at.isoformat() if s.created_at else "",
+            created_at=iso_z(s.created_at),
         )
 
 
